@@ -1,0 +1,1 @@
+export { default as ConsentInstructions } from './ConsentInstructions'

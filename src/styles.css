@@ -1,0 +1,43 @@
+.App {
+  font-family: Graphik;
+  text-align: center;
+}
+
+.fields > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 40px;
+}
+
+.fields > div > label {
+  width: 150px;
+}
+
+.fields > div > input,
+.fields > div > textarea {
+  flex: 2;
+}
+
+textarea {
+  /* white-space: pre; */
+  background: transparent;
+  color: #fff;
+}
+
+h1 {
+  font-weight: 300;
+  line-height: 1.1;
+}
+
+html {
+  background: #171717 !important;
+  color: #fff;
+}
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}

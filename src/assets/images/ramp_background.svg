@@ -1,0 +1,55 @@
+<svg width="1400" height="800" viewBox="0 0 1400 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="200" y="200" width="200" height="200" transform="rotate(180 200 200)" fill="#1D1F22"/>
+<rect x="200" y="200" width="200" height="100" transform="rotate(180 200 200)" fill="#1D1F22"/>
+<path d="M100 0C44.7715 0 0 44.7715 0 100L200 100C200 44.7715 155.228 0 100 0Z" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 400 0)" fill="#CD4036"/>
+<rect width="200" height="200" transform="matrix(1 0 0 -1 400 200)" fill="#1D1F22"/>
+<rect x="600" width="200" height="200" fill="#CD4036"/>
+<path d="M600 0C600 26.2644 605.173 52.2716 615.224 76.5367C625.275 100.802 640.007 122.85 658.579 141.421C677.15 159.993 699.198 174.725 723.463 184.776C747.728 194.827 773.736 200 800 200L800 0H600Z" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 1000 0)" fill="#1D1F22"/>
+<path d="M1000 0C1000 26.2644 994.827 52.2716 984.776 76.5367C974.725 100.802 959.993 122.85 941.421 141.421C922.85 159.993 900.802 174.725 876.537 184.776C852.272 194.827 826.264 200 800 200L800 0H1000Z" fill="#1D1F22"/>
+<rect x="1200" y="200" width="200" height="200" transform="rotate(180 1200 200)" fill="#1D1F22"/>
+<rect x="1200" y="200" width="200" height="100" transform="rotate(180 1200 200)" fill="#1D1F22"/>
+<path d="M1100 0C1044.77 0 1000 44.7715 1000 100L1200 100C1200 44.7715 1155.23 0 1100 0Z" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 1400 0)" fill="#CD4036"/>
+<rect x="200" y="400" width="200" height="200" transform="rotate(180 200 400)" fill="#1D1F22"/>
+<rect x="200" y="400" width="200" height="100" transform="rotate(180 200 400)" fill="#1D1F22"/>
+<path d="M100 200C44.7715 200 0 244.772 0 300H200C200 244.772 155.228 200 100 200Z" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 400 200)" fill="#1D1F22"/>
+<path d="M200 400C200 373.736 205.173 347.728 215.224 323.463C225.275 299.198 240.007 277.15 258.579 258.579C277.15 240.007 299.198 225.275 323.463 215.224C347.728 205.173 373.736 200 400 200L400 400H200Z" fill="#CD4036"/>
+<rect width="200" height="200" transform="matrix(1 0 0 -1 400 400)" fill="#CD4036"/>
+<rect x="600" y="200" width="200" height="200" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 1000 200)" fill="#1D1F22"/>
+<path d="M800 400C800 373.736 805.173 347.728 815.224 323.463C825.275 299.198 840.007 277.15 858.579 258.579C877.15 240.007 899.198 225.275 923.463 215.224C947.728 205.173 973.736 200 1000 200L1000 400H800Z" fill="#CD4036"/>
+<rect x="1200" y="400" width="200" height="200" transform="rotate(180 1200 400)" fill="#CD4036"/>
+<path d="M1200 400C1200 373.736 1194.83 347.728 1184.78 323.463C1174.72 299.198 1159.99 277.15 1141.42 258.579C1122.85 240.007 1100.8 225.275 1076.54 215.224C1052.27 205.173 1026.26 200 1000 200L1000 400H1200Z" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 1400 200)" fill="#1D1F22"/>
+<path d="M1300 300C1244.77 300 1200 255.228 1200 200H1400C1400 255.228 1355.23 300 1300 300Z" fill="#CD4036"/>
+<rect x="200" y="600" width="200" height="200" transform="rotate(180 200 600)" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 400 400)" fill="#1D1F22"/>
+<path d="M200 400C200 426.264 205.173 452.272 215.224 476.537C225.275 500.802 240.007 522.85 258.579 541.421C277.15 559.993 299.198 574.725 323.463 584.776C347.728 594.827 373.736 600 400 600L400 400H200Z" fill="#CD4036"/>
+<rect width="200" height="200" transform="matrix(1 0 0 -1 400 600)" fill="#CD4036"/>
+<path d="M600 400C600 426.264 594.827 452.272 584.776 476.537C574.725 500.802 559.993 522.85 541.421 541.421C522.85 559.993 500.802 574.725 476.537 584.776C452.272 594.827 426.264 600 400 600L400 400H600Z" fill="#1D1F22"/>
+<rect x="600" y="400" width="200" height="200" fill="#CD4036"/>
+<rect x="600" y="500" width="200" height="100" fill="#1D1F22"/>
+<path d="M700 400C755.228 400 800 444.772 800 500H600C600 444.772 644.772 400 700 400Z" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 1000 400)" fill="#1D1F22"/>
+<rect width="200" height="100" transform="matrix(-1 0 0 1 1000 400)" fill="#1D1F22"/>
+<path d="M900 600C844.772 600 800 555.228 800 500H1000C1000 555.228 955.228 600 900 600Z" fill="#1D1F22"/>
+<rect x="1200" y="600" width="200" height="200" transform="rotate(180 1200 600)" fill="#1D1F22"/>
+<path d="M1100 500C1044.77 500 1000 544.772 1000 600H1200C1200 544.772 1155.23 500 1100 500Z" fill="#CD4036"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 1400 400)" fill="#CD4036"/>
+<rect x="200" y="800" width="200" height="200" transform="rotate(180 200 800)" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 400 600)" fill="#CD4036"/>
+<rect width="200" height="200" transform="matrix(1 0 0 -1 400 800)" fill="#CD4036"/>
+<rect width="200" height="100" transform="matrix(1 0 0 -1 400 800)" fill="#1D1F22"/>
+<path d="M500 600C444.772 600 400 644.772 400 700H600C600 644.772 555.228 600 500 600Z" fill="#1D1F22"/>
+<rect x="600" y="600" width="200" height="200" fill="#1D1F22"/>
+<rect x="600" y="600" width="200" height="100" fill="#1D1F22"/>
+<path d="M700 800C755.228 800 800 755.228 800 700H600C600 755.228 644.772 800 700 800Z" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 1000 600)" fill="#CD4036"/>
+<rect x="1200" y="800" width="200" height="200" transform="rotate(180 1200 800)" fill="#1D1F22"/>
+<rect width="200" height="200" transform="matrix(-1 0 0 1 1400 600)" fill="#1D1F22"/>
+<rect width="200" height="100" transform="matrix(-1 0 0 1 1400 600)" fill="#1D1F22"/>
+<path d="M1300 800C1244.77 800 1200 755.228 1200 700H1400C1400 755.228 1355.23 800 1300 800Z" fill="#1D1F22"/>
+</svg>
