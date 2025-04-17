@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from "react-router-dom";
+import React from 'react';
+import { Link } from "react-router-dom";
 import styled from "styled-components";
-
-import { NavItem } from "@components/layouts/TopNav/NavItem";
 
 import useMediaQuery from "@hooks/useMediaQuery";
 import useQuery from '@hooks/useQuery';
+import { colors } from '@theme/colors';
 
 
 export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) => {
@@ -17,22 +16,6 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
   const { navigateWithQuery } = useQuery();
 
   /*
-   * State
-   */
-
-  const location = useLocation();
-  const [selectedItem, setSelectedItem] = useState<string>('Landing');
-
-  /*
-   * Hooks
-   */
-
-  useEffect(() => {
-    const routeName = location.pathname.split('/')[1];
-    setSelectedItem(routeName || 'Landing');
-  }, [location]);
-
-  /*
    * Component
    */
 
@@ -41,30 +24,34 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
       <NavBar>
         {withoutLinks ? (
           <NavBarCentered>
-            <Logo 
-              size={48} 
-              to="/" 
-              onClick={(e) => {
-                e.preventDefault();
-                navigateWithQuery('/');
-                setSelectedItem('Landing');
-              }}
-            >
-              <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
-            </Logo>
+            <LogoContainer>
+              <Logo 
+                size={48} 
+                to="/" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithQuery('/');
+                }}
+              >
+                <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
+              </Logo>
+              <DevBadge>Developer</DevBadge>
+            </LogoContainer>
           </NavBarCentered>
         ) : (
           <LogoAndNavItems>
-            <Logo 
-              to="/" 
-              onClick={(e) => {
-                e.preventDefault();
-                navigateWithQuery('/');
-                setSelectedItem('Landing');
-              }}
-            >
-              <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
-            </Logo>
+            <LogoContainer>
+              <Logo 
+                to="/" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithQuery('/');
+                }}
+              >
+                <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
+              </Logo>
+              <DevBadge>Developer</DevBadge>
+            </LogoContainer>
           </LogoAndNavItems>
         )}
       </NavBar>
@@ -74,34 +61,34 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
       <NavBar>
         {withoutLinks ? (
           <NavBarCentered>
-            <Logo 
-              size={48} 
-              to="/" 
-              onClick={(e) => {
-                e.preventDefault();
-                navigateWithQuery('/');
-                setSelectedItem('Landing');
-              }}
-            >
-              <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
-            </Logo>
+            <LogoContainer>
+              <Logo 
+                size={48} 
+                to="/" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithQuery('/');
+                }}
+              >
+                <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
+              </Logo>
+              <DevBadge>Developer</DevBadge>
+            </LogoContainer>
           </NavBarCentered>
         ) : (
           <LogoAndNavItems>
-            <Logo 
-              to="/" 
-              onClick={(e) => {
-                e.preventDefault();
-                navigateWithQuery('/');
-                setSelectedItem('Landing');
-              }}
-            >
-              <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
-            </Logo>
-
-            { (currentDeviceSize === 'laptop' || currentDeviceSize === 'tablet') && (
-              <NavItem selectedItem={selectedItem} setSelectedItem={setSelectedItem} />
-            )}
+            <LogoContainer>
+              <Logo 
+                to="/" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithQuery('/');
+                }}
+              >
+                <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
+              </Logo>
+              <DevBadge>Developer</DevBadge>
+            </LogoContainer>
           </LogoAndNavItems>
         )}
       </NavBar>
@@ -145,14 +132,26 @@ const Logo = styled(Link)<{ size?: number }>`
   }
 `;
 
-const LoginMenuContainer = styled.div`
-  display: flex;
-  flex-direction: row;
-  gap: 1rem;
-`;
-
 const LogoAndNavItems = styled.div`
   display: flex;
   align-items: center;
   gap: 2rem;
+`;
+
+const LogoContainer = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+`;
+
+const DevBadge = styled.div`
+  color: white;
+  border: 1px solid ${colors.white};
+  font-size: 0.8rem;
+  font-weight: bold;
+  padding: 8px;
+  border-radius: 12px;
+  margin-left: 8px;
+  position: relative;
+  top: -2px;
 `;

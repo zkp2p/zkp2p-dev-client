@@ -52,6 +52,7 @@ export type ExtensionNotaryProofRequest = {
   method: string,
   notaryUrl: string,
   proof: any,                 // returned as an object
+  error: any,
   secretHeaders: string[],
   secretResps: string[],
   status: string,

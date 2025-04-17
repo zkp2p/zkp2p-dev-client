@@ -1,31 +1,19 @@
-import React, { ReactNode } from 'react';
+import React from 'react';
 import {
   BrowserRouter as Router,
   Route,
   Routes
 } from "react-router-dom";
 
-import useMediaQuery from '@hooks/useMediaQuery';
-
-import { BottomNav } from "@components/layouts/BottomNav";
-
 import { Home } from "./pages/Home";
-import { Privacy } from "./pages/Privacy";
-import { Tos } from "./pages/Tos";
+import { TopNav } from '@components/layouts/TopNav';
 
 import ExtensionProxyProofsProvider from './contexts/ExtensionProxyProofs/ExtensionProxyProofsProvider';
-import { ModalSettingsProvider } from 'contexts/ModalSettings';
 
 import "./App.css";
 import "./styles.css";
 
 const App = () => {
-  /*
-   * Context
-   */
-
-  const currentDeviceSize = useMediaQuery();
-
   /*
    * Component
    */
@@ -34,19 +22,13 @@ const App = () => {
     <Router>
       <Providers>
         <div className="app-container">
-          {/* <TopNav /> */}
+          <TopNav />
           <div className="app-content">
             <Routes>
               <Route path="/" element={<Home />} />
-              <Route path="/pp" element={<Privacy />} />
-              <Route path="/tos" element={<Tos />} />
               <Route element={<>Not found</>} />
             </Routes>
           </div>
-
-          {(currentDeviceSize === 'mobile') &&
-            <BottomNav />
-          }
         </div>
       </Providers>
     </Router>
@@ -80,10 +62,7 @@ export const buildProvidersTree = (
 };
 
 const providersWithProps: ProvidersType[] = [
-  
   [ExtensionProxyProofsProvider, {}],
-
-  [ModalSettingsProvider, {}],
 ];
 
 const ProviderTree = buildProvidersTree(providersWithProps);

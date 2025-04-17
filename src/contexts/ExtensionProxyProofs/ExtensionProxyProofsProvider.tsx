@@ -7,7 +7,6 @@ import {
   ExtensionPostMessage,
   ExtensionReceiveMessage,
   ExtensionRequestMetadataMessage,
-  ExtensionRequestMetadata,
 } from '@helpers/types';
 
 import ExtensionProxyProofsContext, { MetadataInfo } from './ExtensionProxyProofsContext';
@@ -43,11 +42,6 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
   const refetchExtensionVersion = () => {
     window.postMessage({ type: ExtensionPostMessage.FETCH_EXTENSION_VERSION }, '*');
     console.log('Posted Message: ', ExtensionPostMessage.FETCH_EXTENSION_VERSION);
-  };
-
-  const refetchProvidersBaseUrl = () => {
-    window.postMessage({ type: ExtensionPostMessage.FETCH_PROVIDER_BASE_URL }, '*');
-    console.log('Posted Message: ', ExtensionPostMessage.FETCH_PROVIDER_BASE_URL);
   };
 
   const openNewTab = (actionType: string, platform: string) => {
@@ -88,7 +82,7 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     }, '*');
 
     console.log('Posted Message: ', intentHash, originalIndex, platform);
-  }, []);
+  }, [resetProofState]);
 
   /*
    * Fetch Transfer Proof
@@ -185,29 +179,35 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
    */
 
   useEffect(() => {
-    intervalRef.current = setInterval(refetchExtensionVersion, 5000);
-    refetchExtensionVersion();
+    // Set up the event listener first
+    window.addEventListener("message", handleExtensionMessage);
+    
+    // Small initial delay to give extension time to initialize
+    const initialCheckTimeout = setTimeout(() => {
+      refetchExtensionVersion();
+      
+      // Start with more frequent checks initially, then switch to 5s interval
+      const initialFrequentChecks = setInterval(() => {
+        refetchExtensionVersion();
+      }, 500); // Check every 500ms initially
+      
+      // After 2 seconds of frequent checks, switch to normal interval
+      setTimeout(() => {
+        clearInterval(initialFrequentChecks);
+        intervalRef.current = setInterval(refetchExtensionVersion, 5000);
+      }, 2000);
+      
+    }, 100); // Small delay before first check
 
     return () => {
+      window.removeEventListener("message", handleExtensionMessage);
+      clearTimeout(initialCheckTimeout);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     };
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener("message", handleExtensionMessage);
-  
-    return () => {
-      window.removeEventListener("message", handleExtensionMessage);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Helper functions to maintain backward compatibility
-  const getMetadata = (platform: string) => platformMetadata[platform]?.metadata || null;
-  const getExpiresAt = (platform: string) => platformMetadata[platform]?.expiresAt || null;
+  }, [handleExtensionMessage]);
 
   return (
     <ExtensionProxyProofsContext.Provider

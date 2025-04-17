@@ -1,30 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { browserName } from 'react-device-detect';
 import { ThemedText } from '@theme/text';
 import { colors } from '@theme/colors';
 import { Button } from '@components/common/Button';
+import { Input } from '@components/common/Input';
 import useExtensionProxyProofs from '@hooks/contexts/useExtensionProxyProofs';
-import { ExtensionRequestMetadata, ProofGenerationStatus } from '@helpers/types';
+import { ExtensionRequestMetadata, ProofGenerationStatusType } from '@helpers/types';
 import chromeSvg from '../assets/images/browsers/chrome.svg';
 import braveSvg from '../assets/images/browsers/brave.svg';
+import { AccessoryButton } from '@components/common/AccessoryButton';
+import Spinner from '@components/common/Spinner';
+import { ChevronRight } from 'react-feather';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
-
+const PROOF_FETCH_INTERVAL = 3000;
+const PROOF_GENERATION_TIMEOUT = 60000;
 
 const Home: React.FC = () => {
-  // Form inputs
-  const [intentHash, setIntentHash] = useState<string>('0x0000000000000000000000000000000000000000000000000000000000000000');
-  const [actionType, setActionType] = useState<string>('transfer_venmo');
-  const [paymentPlatform, setPaymentPlatform] = useState<string>('venmo');
-  const [isInstallExtensionClicked, setIsInstallExtensionClicked] = useState<boolean>(false);
-  
-  // Extension state
-  const [selectedMetadata, setSelectedMetadata] = useState<ExtensionRequestMetadata | null>(null);
-  const [proofStatus, setProofStatus] = useState<string>('idle');
-  const [resultProof, setResultProof] = useState<string>('');
+  const [intentHash, setIntentHash] = useState(
+    '0x0000000000000000000000000000000000000000000000000000000000000000'
+  );
+  const [actionType, setActionType] = useState('transfer_venmo');
+  const [paymentPlatform, setPaymentPlatform] = useState('venmo');
+  const [isInstallClicked, setIsInstallClicked] = useState(false);
 
-  // Get extension context
+  const [selectedMetadata, setSelectedMetadata] =
+    useState<ExtensionRequestMetadata | null>(null);
+  const [proofStatus, setProofStatus] = useState<ProofGenerationStatusType>('idle');
+  const [resultProof, setResultProof] = useState('');
+
+  const [triggerProofFetchPolling, setTriggerProofFetchPolling] = useState(false);
+  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
+  const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const {
     isSidebarInstalled,
     sideBarVersion,
@@ -35,276 +44,297 @@ const Home: React.FC = () => {
     paymentProof,
     generatePaymentProof,
     fetchPaymentProof,
-    resetProofState
+    resetProofState,
   } = useExtensionProxyProofs();
 
-  // Track when we receive metadata from the extension
   useEffect(() => {
-    if (platformMetadata[paymentPlatform]?.metadata) {
-      console.log('Received metadata:', platformMetadata[paymentPlatform]?.metadata);
-    }
-  }, [platformMetadata, paymentPlatform]);
+    refetchExtensionVersion();
+  }, [refetchExtensionVersion]);
 
-  // Handle proof updates
   useEffect(() => {
-    if (paymentProof) {
-      console.log('Received proof:', paymentProof);
-      
-      if (paymentProof.status === 'success') {
-        setProofStatus('success');
-        setResultProof(JSON.stringify(paymentProof.proof, null, 2));
-      } else if (paymentProof.status === 'error') {
-        setProofStatus('error');
-        setResultProof(JSON.stringify(paymentProof, null, 2));
-      } else {
-        setProofStatus('pending');
-      }
+    if (!paymentProof) return;
+    if (paymentProof.status === 'success') {
+      setProofStatus('success');
+      setResultProof(JSON.stringify(paymentProof.proof, null, 2));
+      setTriggerProofFetchPolling(false);
+    } else if (paymentProof.status === 'error') {
+      setProofStatus('error');
+      setResultProof(JSON.stringify(paymentProof.proof, null, 2));
+      setTriggerProofFetchPolling(false);
+    } else {
+      // keep status "generating"
+      setProofStatus('generating');
     }
   }, [paymentProof]);
 
-  // Open new tab to get metadata
-  const handleOpenNewTab = () => {
+  useEffect(() => {
+    if (triggerProofFetchPolling && paymentPlatform) {
+      if (intervalId) clearInterval(intervalId);
+        const id = setInterval(() => {
+          fetchPaymentProof(paymentPlatform);
+        }, PROOF_FETCH_INTERVAL);
+        setIntervalId(id);
+
+        proofTimeoutRef.current = setTimeout(() => {
+          clearInterval(id);
+          setTriggerProofFetchPolling(false);
+          setProofStatus('timeout');
+        }, PROOF_GENERATION_TIMEOUT);
+
+        return () => {
+          clearInterval(id);
+          if (proofTimeoutRef.current) clearTimeout(proofTimeoutRef.current);
+        };
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [triggerProofFetchPolling, paymentPlatform, fetchPaymentProof]
+  );
+
+  useEffect(() => {
+    if (proofStatus !== 'generating' && intervalId) {
+      clearInterval(intervalId);
+      setIntervalId(null);
+      setTriggerProofFetchPolling(false);
+      if (proofTimeoutRef.current) {
+        clearTimeout(proofTimeoutRef.current);
+        proofTimeoutRef.current = null;
+      }
+    }
+  }, [proofStatus, intervalId]);
+
+  const handleInstall = () => {
+    window.open(CHROME_EXTENSION_URL, '_blank');
+    setIsInstallClicked(true);
+  };
+
+  const handleOpenSettings = () => {
+    openSidebar('/settings');
+  };
+
+  const handleAuthenticate = () => {
     if (!intentHash || !actionType || !paymentPlatform) {
       alert('Please fill out all fields');
       return;
     }
-    
-    console.log(`Opening new tab for ${actionType} on ${paymentPlatform} with intent hash ${intentHash}`);
     openNewTab(actionType, paymentPlatform);
     setSelectedMetadata(null);
     setProofStatus('idle');
     setResultProof('');
   };
 
-  const handleOpenSettings = () => {
-    console.log('Opening settings');
-    openSidebar('/settings');
-  };
-
-  // Generate proof for selected metadata
-  const handleGenerateProof = (metadata: ExtensionRequestMetadata) => {
-    setSelectedMetadata(metadata);
+  const handleGenerateProof = (meta: ExtensionRequestMetadata) => {
+    setSelectedMetadata(meta);
     setProofStatus('generating');
-    
-    // Reset any existing proof state
-    resetProofState();
-    
-    // Start the proof generation process
-    generatePaymentProof(paymentPlatform, intentHash, metadata.originalIndex);
-    
-    // Set up polling for proof status
-    const intervalId = setInterval(() => {
-      fetchPaymentProof(paymentPlatform);
-    }, 3000);
-    
-    // Clean up interval after 60 seconds (timeout)
-    setTimeout(() => {
+    setResultProof('');
+
+    setTriggerProofFetchPolling(false);
+    if (intervalId) {
       clearInterval(intervalId);
-      if (proofStatus !== 'success') {
-        setProofStatus('timeout');
-      }
-    }, 60000);
-    
-    return () => clearInterval(intervalId);
-  };
-
-  const handleInstallExtensionClicked = () => {
-    window.open(CHROME_EXTENSION_URL, '_blank');
-    setIsInstallExtensionClicked(true);
-  };
-
-  const browserSvg = () => {
-    switch (browserName) {
-      case 'Brave':
-        return braveSvg;
-      case 'Chrome':
-      default:
-        return chromeSvg;
+      setIntervalId(null);
     }
+    if (proofTimeoutRef.current) {
+      clearTimeout(proofTimeoutRef.current);
+      proofTimeoutRef.current = null;
+    }
+
+    resetProofState();
+    generatePaymentProof(paymentPlatform, intentHash, meta.originalIndex);
+
+    setTriggerProofFetchPolling(true);
   };
 
-  const addToBrowserCopy = () => {
-    switch (browserName) {
-      case 'Brave':
-        return 'Add to Brave';
-      case 'Chrome':
-        return 'Add to Chrome';
-      default:
-        return 'Add to browser';
-    }
-  };
+  const browserSvgIcon = () =>
+    browserName === 'Brave' ? braveSvg : chromeSvg;
+  const addToBrowserText = () =>
+    browserName === 'Brave' ? 'Add to Brave' : 'Add to Chrome';
 
   return (
-    <Container>
-      <ThemedText.HeadlineSmall>ZKP2P Providers Dev Tool</ThemedText.HeadlineSmall>
-      
-      <StatusContainer>
-        <StatusItem>
-          <StatusLabel>Extension Installed:</StatusLabel>
-          <StatusValue>{isSidebarInstalled ? 'Yes' : 'No'}</StatusValue>
-        </StatusItem>
-        {isSidebarInstalled && (
-          <StatusItem>
-            <StatusLabel>Extension Version:</StatusLabel>
-            <StatusValue>{sideBarVersion || 'Unknown'}</StatusValue>
-          </StatusItem>
-        )}
-      </StatusContainer>
+    <PageWrapper $isMobile={false}>
+      <ContentContainer>
+        <FlexContainer $centered={proofStatus === 'idle'}>
+          <SettingsPanel>
+            <Section>
+              <StatusItem>
+                <StatusLabel>Extension Version:</StatusLabel>
+                <StatusValue>
+                  {isSidebarInstalled ? sideBarVersion : 'Not Installed'}
+                </StatusValue>
+                <IconButton 
+                  onClick={handleOpenSettings}
+                  disabled={proofStatus === 'generating'}
+                  title="Open Settings"
+                >
+                  Open Settings
+                  <StyledChevronRight />
+                </IconButton>
+              </StatusItem>
+              <Input
+                label="Intent Hash"
+                name="intentHash"
+                value={intentHash}
+                onChange={(e) => setIntentHash(e.target.value)}
+                valueFontSize="16px"
+              />
+              <Input
+                label="Action Type"
+                name="actionType"
+                value={actionType}
+                onChange={(e) => setActionType(e.target.value)}
+                valueFontSize="16px"
+              />
+              <Input
+                label="Payment Platform"
+                name="paymentPlatform"
+                value={paymentPlatform}
+                onChange={(e) => setPaymentPlatform(e.target.value)}
+                valueFontSize="16px"
+              />
+              <ButtonContainer>
+                {isSidebarInstalled ? (
+                  <Button
+                    onClick={handleAuthenticate}
+                    height={48}
+                    width={216}
+                    disabled={!isSidebarInstalled}
+                  >
+                    Authenticate
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleInstall}
+                    leftAccessorySvg={browserSvgIcon()}
+                    loading={isInstallClicked}
+                    disabled={isInstallClicked}
+                    height={48}
+                    width={216}
+                  >
+                    {addToBrowserText()}
+                  </Button>
+                )}
+              </ButtonContainer>
+            </Section>
 
-      
-      <FormContainer>
-        <FormGroup>
-          <Label>Intent Hash:</Label>
-          <Input
-            value={intentHash}
-            onChange={(e) => setIntentHash(e.target.value)}
-            placeholder="Enter intent hash"
-          />
-        </FormGroup>
-        
-        <FormGroup>
-          <Label>Action Type:</Label>
-          <Input
-            value={actionType}
-            onChange={(e) => setActionType(e.target.value)}
-            placeholder="Enter action type (e.g., payments)"
-          />
-        </FormGroup>
-        
-        <FormGroup>
-          <Label>Payment Platform:</Label>
-          <Input
-            value={paymentPlatform}
-            onChange={(e) => setPaymentPlatform(e.target.value)}
-            placeholder="Enter payment platform (e.g., venmo)"
-          />
-        </FormGroup>
+            {platformMetadata[paymentPlatform]?.metadata && (
+              <Section>
+                <StatusItem>
+                  <StatusLabel>Available Metadata</StatusLabel>
+                </StatusItem>
+                <MetadataList>
+                  {platformMetadata[paymentPlatform].metadata.map(
+                    (m, idx) => (
+                      <MetadataItem
+                        key={idx}
+                        selected={
+                          selectedMetadata?.originalIndex === m.originalIndex
+                        }
+                      >
+                        <MetadataInfo>
+                          <ThemedText.BodySmall>
+                            Amount: {m.amount || 'N/A'}
+                          </ThemedText.BodySmall>
+                          <ThemedText.BodySmall>
+                            Date: {m.date || 'N/A'}
+                          </ThemedText.BodySmall>
+                          <ThemedText.BodySmall>
+                            Recipient: {m.recipient || 'N/A'}
+                          </ThemedText.BodySmall>
+                          <ThemedText.BodySmall>
+                            Index: {m.originalIndex}
+                          </ThemedText.BodySmall>
+                        </MetadataInfo>
+                        <AccessoryButton
+                          onClick={() => handleGenerateProof(m)}
+                          icon="chevronRight"
+                          disabled={
+                            selectedMetadata?.originalIndex === m.originalIndex &&
+                            proofStatus === 'generating'
+                          }
+                        >
+                          Generate Proof
+                        </AccessoryButton>
+                      </MetadataItem>
+                    )
+                  )}
+                </MetadataList>
+              </Section>
+            )}
+          </SettingsPanel>
 
-        {!isSidebarInstalled && (
-          <ButtonContainer>
-            <Button
-              onClick={handleInstallExtensionClicked}
-              height={48}
-              width={216}
-              leftAccessorySvg={browserSvg()}
-              loading={isInstallExtensionClicked}
-              disabled={isInstallExtensionClicked}
-            >
-              { addToBrowserCopy() }
-            </Button>
-          </ButtonContainer>
-        )}
-
-        { isInstallExtensionClicked && (
-          <ThemedText.LabelSmall textAlign="left">
-            Waiting for installation. Try refreshing page.
-          </ThemedText.LabelSmall>
-        )}
-        <ButtonContainer>
-          <Button
-            onClick={handleOpenSettings}
-            height={48}
-            width={216}
-          >
-            Open Settings
-          </Button>
-        </ButtonContainer>
-
-        <ButtonContainer>
-          <Button
-            onClick={handleOpenNewTab}
-            height={48}
-            width={216}
-          >
-            Authenticate
-          </Button>
-        </ButtonContainer>
-      </FormContainer>
-      
-      {platformMetadata[paymentPlatform]?.metadata && (
-        <MetadataContainer>
-          <ThemedText.SubHeaderSmall>Available Metadata</ThemedText.SubHeaderSmall>
-          {platformMetadata[paymentPlatform].metadata.map((metadata, index) => (
-            <MetadataItem 
-              key={index}
-              onClick={() => handleGenerateProof(metadata)}
-              selected={selectedMetadata?.originalIndex === metadata.originalIndex}
-            >
-              <MetadataInfo>
-                <MetadataField>Amount: {metadata.amount || 'N/A'}</MetadataField>
-                <MetadataField>Date: {metadata.date || 'N/A'}</MetadataField>
-                <MetadataField>Recipient: {metadata.recipient || 'N/A'}</MetadataField>
-                <MetadataField>Index: {metadata.originalIndex}</MetadataField>
-              </MetadataInfo>
-              <Button 
-                onClick={() => {
-                  handleGenerateProof(metadata);
-                }}
-                disabled={selectedMetadata?.originalIndex === metadata.originalIndex && proofStatus === 'generating'}
-              >
-                Generate Proof
-              </Button>
-            </MetadataItem>
-          ))}
-        </MetadataContainer>
-      )}
-      
-      {proofStatus !== 'idle' && (
-        <ProofContainer>
-          <ThemedText.SubHeaderSmall>
-            Proof Status: {proofStatus}
-          </ThemedText.SubHeaderSmall>
-          
-          {proofStatus === 'generating' && (
-            <div>Generating proof, please wait...</div>
+          {proofStatus !== 'idle' && (
+            <OutputPanel>
+              <ProofContainer>
+                {proofStatus === 'generating' && (
+                  <>
+                    <SpinnerContainer>
+                      <Spinner color={colors.defaultBorderColor} size={40} />
+                      <SpinnerMessage>
+                        Generating zero-knowledge proof...
+                        <br />
+                        This may take up to 30 seconds
+                      </SpinnerMessage>
+                    </SpinnerContainer>
+                  </>
+                )}
+                {(proofStatus === 'success' || proofStatus === 'error') && (
+                  <>
+                    <ThemedText.LabelSmall>
+                      {proofStatus === 'success'
+                        ? '👍 Proof generated!'
+                        : <>
+                          Error generating proof: {' '}
+                          <ErrorMessage>
+                            {paymentProof?.error.message}
+                          </ErrorMessage>
+                        </>
+                      }
+                    </ThemedText.LabelSmall>
+                    <ProofTextArea readOnly value={resultProof} />
+                  </>
+                )}
+                {proofStatus === 'timeout' && (
+                  <ThemedText.LabelSmall>
+                    ⏱ Timeout: no proof received.
+                  </ThemedText.LabelSmall>
+                )}
+              </ProofContainer>
+            </OutputPanel>
           )}
-          
-          {proofStatus === 'success' && (
-            <>
-              <div>Proof generated successfully!</div>
-              <ProofTextArea readOnly value={resultProof} />
-            </>
-          )}
-          
-          {proofStatus === 'error' && (
-            <>
-              <div>Error generating proof</div>
-              <ProofTextArea readOnly value={resultProof} />
-            </>
-          )}
-          
-          {proofStatus === 'timeout' && (
-            <div>Proof generation timed out</div>
-          )}
-        </ProofContainer>
-      )}
-    </Container>
+        </FlexContainer>
+      </ContentContainer>
+    </PageWrapper>
   );
 };
 
-// Styled components
-const Container = styled.div`
-  padding: 20px;
-  max-width: 800px;
+const PageWrapper = styled.div<{ $isMobile: boolean }>`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: ${props => props.$isMobile ? '0' : '4px 8px'};
+  padding-bottom: ${props => props.$isMobile ? '4.5rem' : '10rem'};
+  height: ${props => props.$isMobile ? '100%' : 'auto'};
+  overflow: ${props => props.$isMobile ? 'hidden' : 'visible'};
+  max-width: 1440px;
   margin: 0 auto;
 `;
 
-const ButtonContainer = styled.div`
+const ContentContainer = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-`;
-
-
-const StatusContainer = styled.div`
-  margin: 20px 0;
-  padding: 10px;
-  border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 8px;
+  justify-content: flex-start;
+  width: 100%;
+  
+  @media (max-width: 600px) {
+    height: calc(100vh - 5rem);
+    overflow-y: auto;
+    padding-bottom: 4.5rem;
+  }
 `;
 
 const StatusItem = styled.div`
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 5px;
 `;
 
@@ -315,39 +345,73 @@ const StatusLabel = styled.div`
 
 const StatusValue = styled.div`
   color: ${colors.connectionStatusGreen};
+  margin-right: auto;
 `;
 
-const FormContainer = styled.div`
+const FlexContainer = styled.div<{ $centered: boolean }>`
+  display: flex;
+  gap: 30px;
+  align-items: stretch;
+  height: calc(100vh - 150px);
+  transition: all 0.5s ease;
+  
+  ${props => props.$centered && `
+    justify-content: center;
+  `}
+`;
+
+const SettingsPanel = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+  max-width: 500px;
+  width: 100%;
+  overflow-y: visible;
+  padding-bottom: 15px;
+`;
+
+const OutputPanel = styled.div`
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100%;
+  overflow-y: auto;
+  padding-bottom: 20px;
+  box-sizing: border-box;
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+    border: 3px solid transparent;
+  }
+  
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.7);
+  }
+`;
+
+const Section = styled.div`
+  padding: 15px;
+  margin-bottom: 15px;
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   gap: 15px;
-  margin-bottom: 20px;
-  padding: 15px;
-  border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 8px;
-`;
-
-const FormGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-`;
-
-const Label = styled.label`
-  font-weight: bold;
-`;
-
-const Input = styled.input`
-  padding: 10px;
-  border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 4px;
-`;
-
-const MetadataContainer = styled.div`
-  margin-top: 20px;
-  padding: 15px;
-  border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 8px;
 `;
 
 const MetadataItem = styled.div<{ selected: boolean }>`
@@ -355,14 +419,18 @@ const MetadataItem = styled.div<{ selected: boolean }>`
   justify-content: space-between;
   align-items: center;
   padding: 10px;
-  margin: 10px 0;
-  border: 1px solid ${props => props.selected ? colors.selectorHoverBorder : colors.defaultBorderColor};
+  border: 1px solid
+    ${(p) =>
+      p.selected
+        ? colors.selectorHoverBorder
+        : colors.defaultBorderColor};
   border-radius: 8px;
-  cursor: pointer;
-  background-color: ${props => props.selected ? colors.selectorHoverBorder : 'transparent'};
+  background-color: ${(p) =>
+    p.selected ? colors.selectorHoverBorder : 'transparent'};
   
   &:hover {
-    background-color: ${props => props.selected ? colors.selectorHoverBorder : colors.selectorHover};
+    background-color: ${(p) =>
+      p.selected ? colors.selectorHoverBorder : colors.selectorHover};
   }
 `;
 
@@ -372,26 +440,145 @@ const MetadataInfo = styled.div`
   gap: 5px;
 `;
 
-const MetadataField = styled.div`
-  font-size: 14px;
-`;
-
 const ProofContainer = styled.div`
-  margin-top: 20px;
-  padding: 15px;
+  padding: 20px;
   border: 1px solid ${colors.defaultBorderColor};
   border-radius: 8px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+
+  > * {
+    max-width: 100%;
+  }
 `;
 
 const ProofTextArea = styled.textarea`
   width: 100%;
-  height: 300px;
+  flex: 1;
+  min-height: 500px;
   margin-top: 10px;
   padding: 10px;
   border: 1px solid ${colors.defaultBorderColor};
   border-radius: 4px;
   font-family: monospace;
   font-size: 12px;
+  resize: none;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  box-sizing: border-box;
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+    border: 3px solid transparent;
+  }
+  
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.7);
+  }
+`;
+
+const ErrorMessage = styled.span`
+  color: #FF3B30;
+`;
+
+const SpinnerContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 4px;
+  box-sizing: border-box;
+  background-color: rgba(0, 0, 0, 0.02);
+  min-height: 500px;
+  flex: 1;
+`;
+
+const SpinnerMessage = styled(ThemedText.LabelSmall)`
+  margin-top: 15px;
+  text-align: center;
+  opacity: 0.8;
+`;
+
+const ButtonContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: 5px;
+`;
+
+const MetadataList = styled.div`
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+    border: 3px solid transparent;
+  }
+  
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.7);
+  }
+`;
+
+const IconButton = styled.button`
+  background: none;
+  border: none;
+  color: ${colors.white};
+  padding: 4px 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  &:hover:not(:disabled) {
+    opacity: 0.8;
+  }
+`;
+
+const StyledChevronRight = styled(ChevronRight)`
+  width: 24px;
+  height: 24px;
+  color: ${colors.white};
 `;
 
 export { Home };
