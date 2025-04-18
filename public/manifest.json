@@ -1,6 +1,6 @@
 {
-  "short_name": "ZKP2P",
-  "name": "Trustless fiat-to-crypto P2P on/off-ramp powered by ZK proofs",
+  "short_name": "ZKP2P Developer",
+  "name": "ZKP2P Developer Tool",
   "icons": [
     {
       "src": "/static/logo192.png",

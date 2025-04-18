@@ -3,7 +3,6 @@ import styled from 'styled-components';
 import { browserName } from 'react-device-detect';
 import { ThemedText } from '@theme/text';
 import { colors } from '@theme/colors';
-import { Z_INDEX } from '@theme/zIndex';
 import { Button } from '@components/common/Button';
 import { Input } from '@components/common/Input';
 import useExtensionProxyProofs from '@hooks/contexts/useExtensionProxyProofs';
@@ -13,7 +12,6 @@ import braveSvg from '../assets/images/browsers/brave.svg';
 import { AccessoryButton } from '@components/common/AccessoryButton';
 import Spinner from '@components/common/Spinner';
 import { ChevronRight } from 'react-feather';
-import { getRandomFunnyMessage } from '@helpers/funnyMessages';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 const PROOF_FETCH_INTERVAL = 3000;
@@ -150,8 +148,6 @@ const Home: React.FC = () => {
     browserName === 'Brave' ? braveSvg : chromeSvg;
   const addToBrowserText = () =>
     browserName === 'Brave' ? 'Add to Brave' : 'Add to Chrome';
-
-  const funnyMessage = getRandomFunnyMessage();
 
   return (
     <PageWrapper>
