@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { browserName } from 'react-device-detect';
 import { ThemedText } from '@theme/text';
 import { colors } from '@theme/colors';
+import { Z_INDEX } from '@theme/zIndex';
 import { Button } from '@components/common/Button';
 import { Input } from '@components/common/Input';
 import useExtensionProxyProofs from '@hooks/contexts/useExtensionProxyProofs';
@@ -12,6 +13,7 @@ import braveSvg from '../assets/images/browsers/brave.svg';
 import { AccessoryButton } from '@components/common/AccessoryButton';
 import Spinner from '@components/common/Spinner';
 import { ChevronRight } from 'react-feather';
+import { getRandomFunnyMessage } from '@helpers/funnyMessages';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 const PROOF_FETCH_INTERVAL = 3000;
@@ -149,136 +151,147 @@ const Home: React.FC = () => {
   const addToBrowserText = () =>
     browserName === 'Brave' ? 'Add to Brave' : 'Add to Chrome';
 
-  return (
-    <PageWrapper $isMobile={false}>
-      <ContentContainer>
-        <FlexContainer $centered={proofStatus === 'idle'}>
-          <SettingsPanel>
-            <Section>
-              <StatusItem>
-                <StatusLabel>Extension Version:</StatusLabel>
-                <StatusValue>
-                  {isSidebarInstalled ? sideBarVersion : 'Not Installed'}
-                </StatusValue>
-                <IconButton 
-                  onClick={handleOpenSettings}
-                  disabled={proofStatus === 'generating'}
-                  title="Open Settings"
-                >
-                  Open Settings
-                  <StyledChevronRight />
-                </IconButton>
-              </StatusItem>
-              <Input
-                label="Intent Hash"
-                name="intentHash"
-                value={intentHash}
-                onChange={(e) => setIntentHash(e.target.value)}
-                valueFontSize="16px"
-              />
-              <Input
-                label="Action Type"
-                name="actionType"
-                value={actionType}
-                onChange={(e) => setActionType(e.target.value)}
-                valueFontSize="16px"
-              />
-              <Input
-                label="Payment Platform"
-                name="paymentPlatform"
-                value={paymentPlatform}
-                onChange={(e) => setPaymentPlatform(e.target.value)}
-                valueFontSize="16px"
-              />
-              <ButtonContainer>
-                {isSidebarInstalled ? (
-                  <Button
-                    onClick={handleAuthenticate}
-                    height={48}
-                    width={216}
-                    disabled={!isSidebarInstalled}
-                  >
-                    Authenticate
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleInstall}
-                    leftAccessorySvg={browserSvgIcon()}
-                    loading={isInstallClicked}
-                    disabled={isInstallClicked}
-                    height={48}
-                    width={216}
-                  >
-                    {addToBrowserText()}
-                  </Button>
-                )}
-              </ButtonContainer>
-            </Section>
+  const funnyMessage = getRandomFunnyMessage();
 
-            {platformMetadata[paymentPlatform]?.metadata && (
-              <Section>
-                <StatusItem>
-                  <StatusLabel>Available Metadata</StatusLabel>
-                </StatusItem>
-                <MetadataList>
-                  {platformMetadata[paymentPlatform].metadata.map(
-                    (m, idx) => (
-                      <MetadataItem
-                        key={idx}
-                        selected={
-                          selectedMetadata?.originalIndex === m.originalIndex
+  return (
+    <PageWrapper>
+      <AppContainer>
+        <LeftPanel>
+          <Section>
+            <StatusItem>
+              <StatusLabel>Version:</StatusLabel>
+              <StatusValue>
+                {isSidebarInstalled ? sideBarVersion : 'Not Installed'}
+              </StatusValue>
+              <IconButton 
+                onClick={handleOpenSettings}
+                disabled={proofStatus === 'generating'}
+                title="Open Settings"
+              >
+                Open Settings
+                <StyledChevronRight />
+              </IconButton>
+            </StatusItem>
+            <Input
+              label="Intent Hash"
+              name="intentHash"
+              value={intentHash}
+              onChange={(e) => setIntentHash(e.target.value)}
+              valueFontSize="16px"
+            />
+            <Input
+              label="Action Type"
+              name="actionType"
+              value={actionType}
+              onChange={(e) => setActionType(e.target.value)}
+              valueFontSize="16px"
+            />
+            <Input
+              label="Payment Platform"
+              name="paymentPlatform"
+              value={paymentPlatform}
+              onChange={(e) => setPaymentPlatform(e.target.value)}
+              valueFontSize="16px"
+            />
+            <ButtonContainer>
+              {isSidebarInstalled ? (
+                <Button
+                  onClick={handleAuthenticate}
+                  height={48}
+                  width={216}
+                  disabled={!isSidebarInstalled}
+                >
+                  Authenticate
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleInstall}
+                  leftAccessorySvg={browserSvgIcon()}
+                  loading={isInstallClicked}
+                  disabled={isInstallClicked}
+                  height={48}
+                  width={216}
+                >
+                  {addToBrowserText()}
+                </Button>
+              )}
+            </ButtonContainer>
+          </Section>
+        </LeftPanel>
+
+        <MiddlePanel>
+          <Section>
+            <StatusItem>
+              <StatusLabel>Available Metadata</StatusLabel>
+            </StatusItem>
+            {platformMetadata[paymentPlatform]?.metadata ? (
+              <MetadataList>
+                {platformMetadata[paymentPlatform].metadata.map(
+                  (m, idx) => (
+                    <MetadataItem
+                      key={idx}
+                      selected={
+                        selectedMetadata?.originalIndex === m.originalIndex
+                      }
+                    >
+                      <MetadataInfo>
+                        <ThemedText.BodySmall>
+                          Amount: {m.amount || 'N/A'}
+                        </ThemedText.BodySmall>
+                        <ThemedText.BodySmall>
+                          Date: {m.date || 'N/A'}
+                        </ThemedText.BodySmall>
+                        <ThemedText.BodySmall>
+                          Recipient: {m.recipient || 'N/A'}
+                        </ThemedText.BodySmall>
+                        <ThemedText.BodySmall>
+                          Index: {m.originalIndex}
+                        </ThemedText.BodySmall>
+                      </MetadataInfo>
+                      <AccessoryButton
+                        onClick={() => handleGenerateProof(m)}
+                        icon="chevronRight"
+                        disabled={
+                          selectedMetadata?.originalIndex === m.originalIndex &&
+                          proofStatus === 'generating'
                         }
                       >
-                        <MetadataInfo>
-                          <ThemedText.BodySmall>
-                            Amount: {m.amount || 'N/A'}
-                          </ThemedText.BodySmall>
-                          <ThemedText.BodySmall>
-                            Date: {m.date || 'N/A'}
-                          </ThemedText.BodySmall>
-                          <ThemedText.BodySmall>
-                            Recipient: {m.recipient || 'N/A'}
-                          </ThemedText.BodySmall>
-                          <ThemedText.BodySmall>
-                            Index: {m.originalIndex}
-                          </ThemedText.BodySmall>
-                        </MetadataInfo>
-                        <AccessoryButton
-                          onClick={() => handleGenerateProof(m)}
-                          icon="chevronRight"
-                          disabled={
-                            selectedMetadata?.originalIndex === m.originalIndex &&
-                            proofStatus === 'generating'
-                          }
-                        >
-                          Generate Proof
-                        </AccessoryButton>
-                      </MetadataItem>
-                    )
-                  )}
-                </MetadataList>
-              </Section>
+                        Prove
+                      </AccessoryButton>
+                    </MetadataItem>
+                  )
+                )}
+              </MetadataList>
+            ) : (
+              <EmptyStateContainer>
+                <EmptyStateMessage>
+                  Authenticate to see available metadata
+                </EmptyStateMessage>
+              </EmptyStateContainer>
             )}
-          </SettingsPanel>
+          </Section>
+        </MiddlePanel>
 
-          {proofStatus !== 'idle' && (
-            <OutputPanel>
+        <RightPanel>
+          <Section>
+            <StatusItem>
+              <StatusLabel>Proof Status</StatusLabel>
+            </StatusItem>
+            {proofStatus !== 'idle' ? (
               <ProofContainer>
                 {proofStatus === 'generating' && (
-                  <>
-                    <SpinnerContainer>
-                      <Spinner color={colors.defaultBorderColor} size={40} />
-                      <SpinnerMessage>
-                        Generating zero-knowledge proof...
-                        <br />
-                        This may take up to 30 seconds
-                      </SpinnerMessage>
-                    </SpinnerContainer>
-                  </>
+                  <SpinnerContainer>
+                    <Spinner color={colors.defaultBorderColor} size={40} />
+                    <SpinnerMessage>
+                      Generating zero-knowledge proof...
+                      <br />
+                      This may take up to 30 seconds
+                    </SpinnerMessage>
+                  </SpinnerContainer>
                 )}
                 {(proofStatus === 'success' || proofStatus === 'error') && (
                   <>
-                    <ThemedText.LabelSmall>
+                    <ThemedText.BodySecondary>
                       {proofStatus === 'success'
                         ? '👍 Proof generated!'
                         : <>
@@ -288,7 +301,7 @@ const Home: React.FC = () => {
                           </ErrorMessage>
                         </>
                       }
-                    </ThemedText.LabelSmall>
+                    </ThemedText.BodySecondary>
                     <ProofTextArea readOnly value={resultProof} />
                   </>
                 )}
@@ -298,37 +311,114 @@ const Home: React.FC = () => {
                   </ThemedText.LabelSmall>
                 )}
               </ProofContainer>
-            </OutputPanel>
-          )}
-        </FlexContainer>
-      </ContentContainer>
+            ) : (
+              <EmptyStateContainer>
+                <EmptyStateMessage>
+                  Select metadata and generate a proof to see results here
+                </EmptyStateMessage>
+              </EmptyStateContainer>
+            )}
+          </Section>
+        </RightPanel>
+      </AppContainer>
     </PageWrapper>
   );
 };
 
-const PageWrapper = styled.div<{ $isMobile: boolean }>`
+// Styled Components
+const PageWrapper = styled.div`
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: ${props => props.$isMobile ? '0' : '4px 8px'};
-  padding-bottom: ${props => props.$isMobile ? '4.5rem' : '10rem'};
-  height: ${props => props.$isMobile ? '100%' : 'auto'};
-  overflow: ${props => props.$isMobile ? 'hidden' : 'visible'};
-  max-width: 1440px;
-  margin: 0 auto;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 1rem;
 `;
 
-const ContentContainer = styled.div`
+const AppContainer = styled.div`
+  display: flex;
+  width: 100%;
+  max-width: 1400px;
+  border-radius: 8px;
+  border: 1px solid ${colors.defaultBorderColor};
+  overflow: hidden;
+  background: ${colors.container};
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+`;
+
+const LeftPanel = styled.div`
+  flex: 1;
+  max-width: 340px;
+  padding: 20px;
+  overflow-y: auto;
+  border-right: 1px solid ${colors.defaultBorderColor};
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+  }
+`;
+
+const MiddlePanel = styled.div`
+  flex: 1.2;
+  padding: 20px;
+  overflow-y: auto;
+  border-right: 1px solid ${colors.defaultBorderColor};
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+  }
+`;
+
+const RightPanel = styled.div`
+  flex: 2;
+  padding: 20px;
+  overflow-y: auto;
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+  }
+`;
+
+const Section = styled.div`
+  padding: 10px;
+  margin-bottom: 15px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  width: 100%;
-  
-  @media (max-width: 600px) {
-    height: calc(100vh - 5rem);
-    overflow-y: auto;
-    padding-bottom: 4.5rem;
-  }
+  gap: 15px;
 `;
 
 const StatusItem = styled.div`
@@ -348,45 +438,25 @@ const StatusValue = styled.div`
   margin-right: auto;
 `;
 
-const FlexContainer = styled.div<{ $centered: boolean }>`
+const ButtonContainer = styled.div`
   display: flex;
-  gap: 30px;
-  align-items: stretch;
-  height: calc(100vh - 150px);
-  transition: all 0.5s ease;
-  
-  ${props => props.$centered && `
-    justify-content: center;
-  `}
-`;
-
-const SettingsPanel = styled.div`
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  height: 100%;
-  max-width: 500px;
+  justify-content: center;
   width: 100%;
-  overflow-y: visible;
-  padding-bottom: 15px;
+  margin-top: 5px;
 `;
 
-const OutputPanel = styled.div`
-  flex: 2;
+const MetadataList = styled.div`
+  max-height: 600px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 100%;
-  overflow-y: auto;
-  padding-bottom: 20px;
-  box-sizing: border-box;
+  gap: 10px;
   
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
   
   &::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
   }
   
   &::-webkit-scrollbar-track {
@@ -396,22 +466,7 @@ const OutputPanel = styled.div`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
-    border: 3px solid transparent;
   }
-  
-  &:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.7);
-  }
-`;
-
-const Section = styled.div`
-  padding: 15px;
-  margin-bottom: 15px;
-  border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
 `;
 
 const MetadataItem = styled.div<{ selected: boolean }>`
@@ -441,9 +496,6 @@ const MetadataInfo = styled.div`
 `;
 
 const ProofContainer = styled.div`
-  padding: 20px;
-  border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 8px;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -470,12 +522,14 @@ const ProofTextArea = styled.textarea`
   white-space: pre-wrap;
   word-wrap: break-word;
   box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.1);
+  color: ${colors.white};
   
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
   
   &::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
   }
   
   &::-webkit-scrollbar-track {
@@ -485,11 +539,6 @@ const ProofTextArea = styled.textarea`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
-    border: 3px solid transparent;
-  }
-  
-  &:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.7);
   }
 `;
 
@@ -503,13 +552,11 @@ const SpinnerContainer = styled.div`
   align-items: center;
   justify-content: center;
   width: 100%;
-  margin-top: 10px;
+  height: 100%;
   padding: 10px;
-  border: 1px solid ${colors.defaultBorderColor};
   border-radius: 4px;
   box-sizing: border-box;
-  background-color: rgba(0, 0, 0, 0.02);
-  min-height: 500px;
+  background-color: rgba(0, 0, 0, 0.05);
   flex: 1;
 `;
 
@@ -517,42 +564,6 @@ const SpinnerMessage = styled(ThemedText.LabelSmall)`
   margin-top: 15px;
   text-align: center;
   opacity: 0.8;
-`;
-
-const ButtonContainer = styled.div`
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  margin-top: 5px;
-`;
-
-const MetadataList = styled.div`
-  max-height: 300px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.5);
-    border-radius: 20px;
-    border: 3px solid transparent;
-  }
-  
-  &:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.7);
-  }
 `;
 
 const IconButton = styled.button`
@@ -576,9 +587,23 @@ const IconButton = styled.button`
 `;
 
 const StyledChevronRight = styled(ChevronRight)`
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   color: ${colors.white};
+`;
+
+const EmptyStateContainer = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 550px;
+  padding: 20px;
+`;
+
+const EmptyStateMessage = styled(ThemedText.BodySmall)`
+  text-align: center;
+  opacity: 0.6;
 `;
 
 export { Home };
