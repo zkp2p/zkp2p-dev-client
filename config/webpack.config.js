@@ -650,21 +650,8 @@ module.exports = function (webpackEnv) {
       // during a production build.
       // Otherwise React will be compiled in the very slow development mode.
       new webpack.DefinePlugin({
-        'process.env.ALCHEMY_API_KEY': JSON.stringify(process.env.ALCHEMY_API_KEY),
-        'process.env.COINBASE_DEV_API_KEY': JSON.stringify(process.env.COINBASE_DEV_API_KEY),
-        'process.env.WALLET_CONNECT_PROJECT_ID': JSON.stringify(process.env.WALLET_CONNECT_PROJECT_ID),
         'process.env.PUBLIC_URL': JSON.stringify(process.env.PUBLIC_URL),
-        'process.env.DEPLOYMENT_ENVIRONMENT': JSON.stringify(process.env.DEPLOYMENT_ENVIRONMENT),
-        'process.env.PRIVY_APP_ID': JSON.stringify(process.env.PRIVY_APP_ID),
-        'process.env.ZERODEV_APP_ID': JSON.stringify(process.env.ZERODEV_APP_ID),
-        'process.env.SOCKET_API_KEY': JSON.stringify(process.env.SOCKET_API_KEY),
-        'process.env.ALCHEMY_SOLANA_API_KEY': JSON.stringify(process.env.ALCHEMY_SOLANA_API_KEY),
-        'process.env.CURATOR_API_URL': JSON.stringify(process.env.CURATOR_API_URL),
-        'process.env.RECLAIM_APP_ID': JSON.stringify(process.env.RECLAIM_APP_ID),
-        'process.env.RECLAIM_APP_SECRET': JSON.stringify(process.env.RECLAIM_APP_SECRET),
         'process.env.ROLLBAR_ACCESS_TOKEN': JSON.stringify(process.env.ROLLBAR_ACCESS_TOKEN),
-        'process.env.CURRENCY_PRICE_API_KEY': JSON.stringify(process.env.CURRENCY_PRICE_API_KEY),
-        'process.env.DUNE_API_KEY': JSON.stringify(process.env.DUNE_API_KEY),
       }),
       // Experimental hot reloading for React .
       // https://github.com/facebook/react/tree/main/packages/react-refresh
