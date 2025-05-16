@@ -18,11 +18,23 @@ const PROOF_FETCH_INTERVAL = 3000;
 const PROOF_GENERATION_TIMEOUT = 60000;
 
 const Home: React.FC = () => {
-  const [intentHash, setIntentHash] = useState(
-    '0x0000000000000000000000000000000000000000000000000000000000000000'
-  );
-  const [actionType, setActionType] = useState('transfer_venmo');
-  const [paymentPlatform, setPaymentPlatform] = useState('venmo');
+  const [intentHash, setIntentHash] = useState(() => {
+    return localStorage.getItem('intentHash') || '0x0000000000000000000000000000000000000000000000000000000000000000';
+  });
+  const [actionType, setActionType] = useState(() => {
+    return localStorage.getItem('actionType') || 'transfer_venmo';
+  });
+  const [paymentPlatform, setPaymentPlatform] = useState(() => {
+    return localStorage.getItem('paymentPlatform') || 'venmo';
+  });
+  const [metadataPlatform, setMetadataPlatform] = useState(() => {
+    const initialStoredPaymentPlatform = localStorage.getItem('paymentPlatform') || 'venmo';
+    const storedMetadataVal = localStorage.getItem('metadataPlatform');
+    if (storedMetadataVal === null) {
+      return initialStoredPaymentPlatform;
+    }
+    return storedMetadataVal;
+  });
   const [isInstallClicked, setIsInstallClicked] = useState(false);
 
   const [selectedMetadata, setSelectedMetadata] =
@@ -50,6 +62,25 @@ const Home: React.FC = () => {
   useEffect(() => {
     refetchExtensionVersion();
   }, [refetchExtensionVersion]);
+
+  useEffect(() => {
+    localStorage.setItem('intentHash', intentHash);
+  }, [intentHash]);
+
+  useEffect(() => {
+    localStorage.setItem('actionType', actionType);
+  }, [actionType]);
+
+  useEffect(() => {
+    localStorage.setItem('paymentPlatform', paymentPlatform);
+  }, [paymentPlatform]);
+
+  useEffect(() => {
+    const storedMetadataVal = localStorage.getItem('metadataPlatform');
+    if (storedMetadataVal === null) {
+      setMetadataPlatform(paymentPlatform);
+    }
+  }, [paymentPlatform]);
 
   useEffect(() => {
     if (!paymentProof) return;
@@ -108,6 +139,12 @@ const Home: React.FC = () => {
     setIsInstallClicked(true);
   };
 
+  const handleMetadataPlatformChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setMetadataPlatform(newValue);
+    localStorage.setItem('metadataPlatform', newValue);
+  };
+
   const handleOpenSettings = () => {
     openSidebar('/settings');
   };
@@ -139,7 +176,7 @@ const Home: React.FC = () => {
     }
 
     resetProofState();
-    generatePaymentProof(paymentPlatform, intentHash, meta.originalIndex);
+    generatePaymentProof(metadataPlatform, intentHash, meta.originalIndex);
 
     setTriggerProofFetchPolling(true);
   };
@@ -189,6 +226,13 @@ const Home: React.FC = () => {
               onChange={(e) => setPaymentPlatform(e.target.value)}
               valueFontSize="16px"
             />
+            <Input
+              label="Optional Metadata Group (e.g. zelle)"
+              name="metadataPlatform"
+              value={metadataPlatform}
+              onChange={handleMetadataPlatformChange}
+              valueFontSize="16px"
+            />
             <ButtonContainer>
               {isSidebarInstalled ? (
                 <Button
@@ -220,9 +264,9 @@ const Home: React.FC = () => {
             <StatusItem>
               <StatusLabel>Available Metadata</StatusLabel>
             </StatusItem>
-            {platformMetadata[paymentPlatform]?.metadata ? (
+            {platformMetadata[metadataPlatform]?.metadata ? (
               <MetadataList>
-                {platformMetadata[paymentPlatform].metadata.map(
+                {platformMetadata[metadataPlatform].metadata.map(
                   (m, idx) => (
                     <MetadataItem
                       key={idx}
