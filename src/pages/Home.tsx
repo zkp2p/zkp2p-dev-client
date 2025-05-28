@@ -35,6 +35,7 @@ const Home: React.FC = () => {
     }
     return storedMetadataVal;
   });
+  const [proofIndex, setProofIndex] = useState<number>(0);
   const [isInstallClicked, setIsInstallClicked] = useState(false);
 
   const [selectedMetadata, setSelectedMetadata] =
@@ -58,6 +59,8 @@ const Home: React.FC = () => {
     fetchPaymentProof,
     resetProofState,
   } = useExtensionProxyProofs();
+
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   useEffect(() => {
     refetchExtensionVersion();
@@ -176,7 +179,7 @@ const Home: React.FC = () => {
     }
 
     resetProofState();
-    generatePaymentProof(metadataPlatform, intentHash, meta.originalIndex);
+    generatePaymentProof(metadataPlatform, intentHash, meta.originalIndex, proofIndex);
 
     setTriggerProofFetchPolling(true);
   };
@@ -226,13 +229,36 @@ const Home: React.FC = () => {
               onChange={(e) => setPaymentPlatform(e.target.value)}
               valueFontSize="16px"
             />
-            <Input
-              label="Optional Metadata Group (e.g. zelle)"
-              name="metadataPlatform"
-              value={metadataPlatform}
-              onChange={handleMetadataPlatformChange}
-              valueFontSize="16px"
-            />
+            <AdvancedSection>
+              <AdvancedHeader onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}>
+                <ThemedText.BodySmall>Advanced Settings</ThemedText.BodySmall>
+                <ChevronRight 
+                  size={16} 
+                  style={{ 
+                    transform: isAdvancedOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s ease'
+                  }} 
+                />
+              </AdvancedHeader>
+              {isAdvancedOpen && (
+                <AdvancedContent>
+                  <Input
+                    label="Metadata Group (e.g. zelle)"
+                    name="metadataPlatform"
+                    value={metadataPlatform}
+                    onChange={handleMetadataPlatformChange}
+                    valueFontSize="16px"
+                  />
+                  <Input
+                    label="Proof Index"
+                    name="proofIndex"
+                    value={proofIndex.toString()}
+                    onChange={(e) => setProofIndex(Number(e.target.value))}
+                    valueFontSize="16px"
+                  />
+                </AdvancedContent>
+              )}
+            </AdvancedSection>
             <ButtonContainer>
               {isSidebarInstalled ? (
                 <Button
@@ -644,6 +670,33 @@ const EmptyStateContainer = styled.div`
 const EmptyStateMessage = styled(ThemedText.BodySmall)`
   text-align: center;
   opacity: 0.6;
+`;
+
+const AdvancedSection = styled.div`
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 8px;
+  overflow: hidden;
+`;
+
+const AdvancedHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.05);
+  
+  &:hover {
+    background: rgba(0, 0, 0, 0.1);
+  }
+`;
+
+const AdvancedContent = styled.div`
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  border-top: 1px solid ${colors.defaultBorderColor};
 `;
 
 export { Home };
