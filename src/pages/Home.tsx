@@ -42,6 +42,8 @@ const Home: React.FC = () => {
     useState<ExtensionRequestMetadata | null>(null);
   const [proofStatus, setProofStatus] = useState<ProofGenerationStatusType>('idle');
   const [resultProof, setResultProof] = useState('');
+  const [proofGenerationStartTime, setProofGenerationStartTime] = useState<number | null>(null);
+  const [proofGenerationDuration, setProofGenerationDuration] = useState<number | null>(null);
 
   const [triggerProofFetchPolling, setTriggerProofFetchPolling] = useState(false);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
@@ -91,6 +93,9 @@ const Home: React.FC = () => {
       setProofStatus('success');
       setResultProof(JSON.stringify(paymentProof.proof, null, 2));
       setTriggerProofFetchPolling(false);
+      if (proofGenerationStartTime) {
+        setProofGenerationDuration(Date.now() - proofGenerationStartTime);
+      }
     } else if (paymentProof.status === 'error') {
       setProofStatus('error');
       setResultProof(JSON.stringify(paymentProof.proof, null, 2));
@@ -99,7 +104,7 @@ const Home: React.FC = () => {
       // keep status "generating"
       setProofStatus('generating');
     }
-  }, [paymentProof]);
+  }, [paymentProof, proofGenerationStartTime]);
 
   useEffect(() => {
     if (triggerProofFetchPolling && paymentPlatform) {
@@ -167,6 +172,8 @@ const Home: React.FC = () => {
     setSelectedMetadata(meta);
     setProofStatus('generating');
     setResultProof('');
+    setProofGenerationStartTime(Date.now());
+    setProofGenerationDuration(null);
 
     setTriggerProofFetchPolling(false);
     if (intervalId) {
@@ -359,7 +366,7 @@ const Home: React.FC = () => {
                   <>
                     <ThemedText.BodySecondary>
                       {proofStatus === 'success'
-                        ? '👍 Proof generated!'
+                        ? `👍 Proof generated! ${proofGenerationDuration ? `(${(proofGenerationDuration / 1000).toFixed(1)}s)` : ''}`
                         : <>
                           Error generating proof: {' '}
                           <ErrorMessage>
