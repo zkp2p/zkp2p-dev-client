@@ -72,6 +72,8 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     intentHash: string,
     originalIndex: number,
     proofIndex?: number,
+    providerType?: string,
+    proofType?: string,
   ) => {
     resetProofState();
 
@@ -81,9 +83,11 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
       originalIndex,
       platform,
       proofIndex,
+      providerType,
+      proofType,
     }, '*');
 
-    console.log('Posted Message: ', intentHash, originalIndex, platform, proofIndex);
+    console.log('Posted Message: ', intentHash, originalIndex, platform, proofIndex, providerType, proofType);
   }, [resetProofState]);
 
   /*
