@@ -11,7 +11,7 @@ import chromeSvg from '../assets/images/browsers/chrome.svg';
 import braveSvg from '../assets/images/browsers/brave.svg';
 import { AccessoryButton } from '@components/common/AccessoryButton';
 import Spinner from '@components/common/Spinner';
-import { ChevronRight } from 'react-feather';
+import { ChevronRight, ChevronDown } from 'react-feather';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 const PROOF_FETCH_INTERVAL = 3000;
@@ -36,6 +36,12 @@ const Home: React.FC = () => {
     return storedMetadataVal;
   });
   const [proofIndex, setProofIndex] = useState<number>(0);
+  const [providerType, setProviderType] = useState(() => {
+    return localStorage.getItem('providerType') || 'reclaim';
+  });
+  const [proofType, setProofType] = useState(() => {
+    return localStorage.getItem('proofType') || 'proxytls';
+  });
   const [isInstallClicked, setIsInstallClicked] = useState(false);
 
   const [selectedMetadata, setSelectedMetadata] =
@@ -86,6 +92,14 @@ const Home: React.FC = () => {
       setMetadataPlatform(paymentPlatform);
     }
   }, [paymentPlatform]);
+
+  useEffect(() => {
+    localStorage.setItem('providerType', providerType);
+  }, [providerType]);
+
+  useEffect(() => {
+    localStorage.setItem('proofType', proofType);
+  }, [proofType]);
 
   useEffect(() => {
     if (!paymentProof) return;
@@ -186,7 +200,7 @@ const Home: React.FC = () => {
     }
 
     resetProofState();
-    generatePaymentProof(metadataPlatform, intentHash, meta.originalIndex, proofIndex);
+    generatePaymentProof(metadataPlatform, intentHash, meta.originalIndex, proofIndex, providerType, proofType);
 
     setTriggerProofFetchPolling(true);
   };
@@ -236,6 +250,32 @@ const Home: React.FC = () => {
               onChange={(e) => setPaymentPlatform(e.target.value)}
               valueFontSize="16px"
             />
+            <SelectWrapper>
+              <SelectLabel>Provider Type</SelectLabel>
+              <SelectContainer>
+                <Select
+                  value={providerType}
+                  onChange={(e) => setProviderType(e.target.value)}
+                >
+                  <option value="reclaim">Reclaim</option>
+                  <option value="primus">Primus</option>
+                </Select>
+                <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: colors.white }} />
+              </SelectContainer>
+            </SelectWrapper>
+            <SelectWrapper>
+              <SelectLabel>Proof Type</SelectLabel>
+              <SelectContainer>
+                <Select
+                  value={proofType}
+                  onChange={(e) => setProofType(e.target.value)}
+                >
+                  <option value="proxytls">ProxyTLS</option>
+                  <option value="mpctls">MPCTLS</option>
+                </Select>
+                <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: colors.white }} />
+              </SelectContainer>
+            </SelectWrapper>
             <AdvancedSection>
               <AdvancedHeader onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}>
                 <ThemedText.BodySmall>Advanced Settings</ThemedText.BodySmall>
@@ -704,6 +744,51 @@ const AdvancedContent = styled.div`
   flex-direction: column;
   gap: 15px;
   border-top: 1px solid ${colors.defaultBorderColor};
+`;
+
+const SelectWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const SelectLabel = styled.label`
+  font-size: 14px;
+  font-weight: 500;
+  color: ${colors.white};
+  opacity: 0.8;
+`;
+
+const SelectContainer = styled.div`
+  position: relative;
+  width: 100%;
+`;
+
+const Select = styled.select`
+  width: 100%;
+  padding: 12px 40px 12px 16px;
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 8px;
+  background-color: ${colors.defaultInputColor};
+  color: ${colors.white};
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  appearance: none;
+  
+  &:hover {
+    border-color: ${colors.selectorHoverBorder};
+  }
+  
+  &:focus {
+    outline: none;
+    border-color: ${colors.selectorHoverBorder};
+  }
+  
+  option {
+    background-color: ${colors.container};
+    color: ${colors.white};
+  }
 `;
 
 export { Home };
