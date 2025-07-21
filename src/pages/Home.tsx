@@ -80,12 +80,6 @@ const Home: React.FC = () => {
     localStorage.setItem('paymentPlatform', paymentPlatform);
   }, [paymentPlatform]);
 
-  useEffect(() => {
-    const storedMetadataVal = localStorage.getItem('metadataPlatform');
-    if (storedMetadataVal === null) {
-      setMetadataPlatform(paymentPlatform);
-    }
-  }, [paymentPlatform]);
 
   useEffect(() => {
     if (!paymentProof) return;
@@ -145,6 +139,12 @@ const Home: React.FC = () => {
   const handleInstall = () => {
     window.open(CHROME_EXTENSION_URL, '_blank');
     setIsInstallClicked(true);
+  };
+
+  const handlePaymentPlatformChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = event.target.value;
+    setPaymentPlatform(newValue);
+    setMetadataPlatform(newValue);
   };
 
   const handleMetadataPlatformChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -233,7 +233,7 @@ const Home: React.FC = () => {
               label="Payment Platform"
               name="paymentPlatform"
               value={paymentPlatform}
-              onChange={(e) => setPaymentPlatform(e.target.value)}
+              onChange={handlePaymentPlatformChange}
               valueFontSize="16px"
             />
             <AdvancedSection>
