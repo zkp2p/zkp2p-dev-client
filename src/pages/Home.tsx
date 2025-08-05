@@ -85,14 +85,14 @@ const Home: React.FC = () => {
     if (!paymentProof) return;
     if (paymentProof.status === 'success') {
       setProofStatus('success');
-      setResultProof(JSON.stringify(paymentProof.proof, null, 2));
+      setResultProof(JSON.stringify(paymentProof, null, 2));
       setTriggerProofFetchPolling(false);
       if (proofGenerationStartTime) {
         setProofGenerationDuration(Date.now() - proofGenerationStartTime);
       }
     } else if (paymentProof.status === 'error') {
       setProofStatus('error');
-      setResultProof(JSON.stringify(paymentProof.proof, null, 2));
+      setResultProof(JSON.stringify(paymentProof, null, 2));
       setTriggerProofFetchPolling(false);
     } else {
       // keep status "generating"
