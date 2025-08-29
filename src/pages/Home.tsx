@@ -275,10 +275,11 @@ const Home: React.FC = () => {
           claim: proofClaim,
           signatures: proofData.proof?.signatures || proofData.signatures || {}
         },
-        chainId: chainId
+        chainId: chainId,
+        verifyingContract: "0x09618E223f22652e3d83B98614A745D12A7ae991"
       };
       
-      const endpoint = `http://localhost:8080/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
+      const endpoint = `https://attestation-service-staging.zkp2p.xyz/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -323,11 +324,11 @@ const Home: React.FC = () => {
     // The entire struct must be encoded as a single tuple
     const paymentAttestationTuple = [
       typedData.paymentMethod,                    // bytes32 paymentMethod
-      typedData.processorProviderHash,            // bytes32 providerHash
+      typedData.providerHash,            // bytes32 providerHash
       typedData.intentHash,                       // bytes32 intentHash
       // PaymentDetails as nested tuple
       [
-        typedData.receiverId,                     // bytes32 recipientId
+        typedData.recipientId,                     // bytes32 recipientId
         ethers.BigNumber.from(typedData.amount),  // uint256 amount (in cents)
         ethers.BigNumber.from(typedData.timestamp), // uint256 timestamp (in milliseconds)
         typedData.paymentId,                      // bytes32 paymentId
@@ -346,10 +347,10 @@ const Home: React.FC = () => {
     
     console.log('Encoding PaymentAttestation with structure:', {
       paymentMethod: typedData.paymentMethod,
-      providerHash: typedData.processorProviderHash,
+      providerHash: typedData.providerHash,
       intentHash: typedData.intentHash,
       paymentDetails: {
-        recipientId: typedData.receiverId,
+        recipientId: typedData.recipientId,
         amount: typedData.amount,
         timestamp: typedData.timestamp,
         paymentId: typedData.paymentId,
@@ -416,7 +417,6 @@ const Home: React.FC = () => {
       }
       
       const attestorAddress = zkTlsProof.proof.signatures.attestorAddress;
-      console.log('Using attestorAddress from zkTLS proof:', attestorAddress);
       
       // Encode the attestorAddress as bytes for the data field
       // This matches the contract's expected format for attestation data
