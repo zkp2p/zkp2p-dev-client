@@ -12,6 +12,8 @@ import braveSvg from '../assets/images/browsers/brave.svg';
 import { AccessoryButton } from '@components/common/AccessoryButton';
 import Spinner from '@components/common/Spinner';
 import { ChevronRight } from 'react-feather';
+import { ethers } from 'ethers';
+import { unifiedVerifierAbi } from '../abis/UnifiedVerifierAbi';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 const PROOF_FETCH_INTERVAL = 3000;
@@ -90,6 +92,19 @@ const Home: React.FC = () => {
   const [triggerProofFetchPolling, setTriggerProofFetchPolling] = useState(false);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Calldata generation state
+  const [calldataInputs, setCalldataInputs] = useState({
+    depositToken: '',
+    intentAmount: '',
+    intentTimestamp: '',
+    payeeDetails: '',
+    fiatCurrency: '',
+    conversionRate: '',
+    depositData: '0x0000000000000000000000000000000000000000000000000000000000000000'
+  });
+  const [generatedCalldata, setGeneratedCalldata] = useState<string>('');
+  const [calldataError, setCalldataError] = useState<string | null>(null);
 
   const {
     isSidebarInstalled,
@@ -263,7 +278,7 @@ const Home: React.FC = () => {
         chainId: chainId
       };
       
-      const endpoint = `https://attestation-service-staging.zkp2p.xyz/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
+      const endpoint = `http://localhost:8080/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -293,9 +308,163 @@ const Home: React.FC = () => {
   const addToBrowserText = () =>
     browserName === 'Brave' ? 'Add to Brave' : 'Add to Chrome';
 
+  // Helper function to encode PaymentAttestation struct
+  const encodePaymentAttestation = (attestationResponse: any) => {
+    const abiCoder = new ethers.utils.AbiCoder();
+    
+    // Extract the typed data values from the response
+    const typedData = attestationResponse.responseObject.typedDataValue;
+    const signature = attestationResponse.responseObject.signature;
+    
+    // Convert signature to bytes array format
+    const signaturesArray = signature ? [signature] : [];
+    
+    // Create the complete PaymentAttestation struct matching the contract
+    // The entire struct must be encoded as a single tuple
+    const paymentAttestationTuple = [
+      typedData.paymentMethod,                    // bytes32 paymentMethod
+      typedData.processorProviderHash,            // bytes32 providerHash
+      typedData.intentHash,                       // bytes32 intentHash
+      // PaymentDetails as nested tuple
+      [
+        typedData.receiverId,                     // bytes32 recipientId
+        ethers.BigNumber.from(typedData.amount),  // uint256 amount (in cents)
+        ethers.BigNumber.from(typedData.timestamp), // uint256 timestamp (in milliseconds)
+        typedData.paymentId,                      // bytes32 paymentId
+        typedData.currency                        // bytes32 currency
+      ],
+      signaturesArray,                            // bytes[] signatures
+      typedData.dataHash                          // bytes32 dataHash
+    ];
+    
+    // Encode the entire PaymentAttestation as a single tuple
+    // This matches the contract's expected format for the paymentProof bytes parameter
+    const encodedData = abiCoder.encode(
+      ['tuple(bytes32,bytes32,bytes32,tuple(bytes32,uint256,uint256,bytes32,bytes32),bytes[],bytes32)'],
+      [paymentAttestationTuple]
+    );
+    
+    console.log('Encoding PaymentAttestation with structure:', {
+      paymentMethod: typedData.paymentMethod,
+      providerHash: typedData.processorProviderHash,
+      intentHash: typedData.intentHash,
+      paymentDetails: {
+        recipientId: typedData.receiverId,
+        amount: typedData.amount,
+        timestamp: typedData.timestamp,
+        paymentId: typedData.paymentId,
+        currency: typedData.currency
+      },
+      signatures: signaturesArray,
+      dataHash: typedData.dataHash
+    });
+    
+    return encodedData;
+  };
+
+  // Function to generate calldata for verifyPayment
+  const handleGenerateCalldata = () => {
+    try {
+      setCalldataError(null);
+      setGeneratedCalldata('');
+      
+      // Validate required inputs
+      if (!attestationResponse) {
+        throw new Error('Please generate an attestation first');
+      }
+      
+      if (!resultProof) {
+        throw new Error('Please generate a zkTLS proof first');
+      }
+      
+      if (!calldataInputs.depositToken || !ethers.utils.isAddress(calldataInputs.depositToken)) {
+        throw new Error('Invalid deposit token address');
+      }
+      
+      if (!calldataInputs.intentAmount || calldataInputs.intentAmount === '0') {
+        throw new Error('Invalid intent amount');
+      }
+      
+      if (!calldataInputs.intentTimestamp) {
+        throw new Error('Invalid intent timestamp');
+      }
+      
+      if (!calldataInputs.payeeDetails || !calldataInputs.payeeDetails.startsWith('0x')) {
+        throw new Error('Payee details must be a bytes32 hash starting with 0x');
+      }
+      
+      if (!calldataInputs.fiatCurrency || !calldataInputs.fiatCurrency.startsWith('0x')) {
+        throw new Error('Fiat currency must be a bytes32 hash starting with 0x');
+      }
+      
+      if (!calldataInputs.conversionRate || calldataInputs.conversionRate === '0') {
+        throw new Error('Invalid conversion rate');
+      }
+      
+      // Parse attestation response
+      const parsedAttestation = JSON.parse(attestationResponse);
+      
+      // Validate that the response has the expected structure
+      if (!parsedAttestation.responseObject || !parsedAttestation.responseObject.typedDataValue) {
+        throw new Error('Invalid attestation response structure');
+      }
+      
+      // Parse the zkTLS proof to extract attestorAddress
+      const zkTlsProof = JSON.parse(resultProof);
+      if (!zkTlsProof.proof?.signatures?.attestorAddress) {
+        throw new Error('Attestor address not found in zkTLS proof');
+      }
+      
+      const attestorAddress = zkTlsProof.proof.signatures.attestorAddress;
+      console.log('Using attestorAddress from zkTLS proof:', attestorAddress);
+      
+      // Encode the attestorAddress as bytes for the data field
+      // This matches the contract's expected format for attestation data
+      const attestationData = ethers.utils.defaultAbiCoder.encode(
+        ['address'],
+        [attestorAddress]
+      );
+      
+      // Encode PaymentAttestation as bytes using the full response
+      const encodedPaymentProof = encodePaymentAttestation(parsedAttestation);
+      
+      // Create ethers Interface using the unifiedVerifierAbi
+      const verifierInterface = new ethers.utils.Interface(unifiedVerifierAbi);
+      
+      // Create VerifyPaymentData struct for the function call
+      const verifyPaymentData = {
+        paymentProof: encodedPaymentProof,
+        depositToken: calldataInputs.depositToken,
+        intentAmount: ethers.BigNumber.from(calldataInputs.intentAmount),
+        intentTimestamp: ethers.BigNumber.from(calldataInputs.intentTimestamp),
+        payeeDetails: calldataInputs.payeeDetails,
+        fiatCurrency: calldataInputs.fiatCurrency,
+        conversionRate: ethers.BigNumber.from(calldataInputs.conversionRate),
+        depositData: calldataInputs.depositData || '0x0000000000000000000000000000000000000000000000000000000000000000',
+        data: attestationData // Use the encoded attestorAddress
+      };
+      
+      // Use the Interface to encode the function call
+      const calldata = verifierInterface.encodeFunctionData('verifyPayment', [verifyPaymentData]);
+      
+      setGeneratedCalldata(calldata);
+    } catch (error) {
+      console.error('Error generating calldata:', error);
+      setCalldataError(error instanceof Error ? error.message : 'Unknown error');
+    }
+  };
+
+  const handleCalldataInputChange = (field: string, value: string) => {
+    setCalldataInputs(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
   return (
     <PageWrapper>
-      <AppContainer>
+      <MainContent>
+        <AppContainer>
         <LeftPanel>
           <Section>
             <StepIndicator>
@@ -557,7 +726,119 @@ const Home: React.FC = () => {
             )}
           </Section>
         </AttestationPanel>
-      </AppContainer>
+        </AppContainer>
+        
+        <CalldataSection>
+          <CalldataContent>
+            <StepIndicator>
+              <StepNumber>5</StepNumber>
+              <StepLabel>Generate Calldata</StepLabel>
+            </StepIndicator>
+            <StatusItem>
+              <StatusLabel>VerifyPayment Calldata</StatusLabel>
+            </StatusItem>
+            {attestationResponse ? (
+              <CalldataWrapper>
+                <CalldataInputsContainer>
+                  <CalldataInputsGrid>
+                    <Input
+                      label="Deposit Token Address"
+                      name="depositToken"
+                      value={calldataInputs.depositToken}
+                      onChange={(e) => handleCalldataInputChange('depositToken', e.target.value)}
+                      valueFontSize="14px"
+                      placeholder="0x..."
+                    />
+                    <Input
+                      label="Intent Amount"
+                      name="intentAmount"
+                      value={calldataInputs.intentAmount}
+                      onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
+                      valueFontSize="14px"
+                      placeholder="Amount in wei"
+                    />
+                    <Input
+                      label="Intent Timestamp"
+                      name="intentTimestamp"
+                      value={calldataInputs.intentTimestamp}
+                      onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
+                      valueFontSize="14px"
+                      placeholder="Unix timestamp"
+                    />
+                    <Input
+                      label="Payee Details (bytes32)"
+                      name="payeeDetails"
+                      value={calldataInputs.payeeDetails}
+                      onChange={(e) => handleCalldataInputChange('payeeDetails', e.target.value)}
+                      valueFontSize="14px"
+                      placeholder="0x... (32 bytes hash)"
+                    />
+                    <Input
+                      label="Fiat Currency (bytes32)"
+                      name="fiatCurrency"
+                      value={calldataInputs.fiatCurrency}
+                      onChange={(e) => handleCalldataInputChange('fiatCurrency', e.target.value)}
+                      valueFontSize="14px"
+                      placeholder="0x... (32 bytes hash)"
+                    />
+                    <Input
+                      label="Conversion Rate"
+                      name="conversionRate"
+                      value={calldataInputs.conversionRate}
+                      onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
+                      valueFontSize="14px"
+                      placeholder="Rate in wei"
+                    />
+                    <Input
+                      label="Deposit Data (bytes)"
+                      name="depositData"
+                      value={calldataInputs.depositData}
+                      onChange={(e) => handleCalldataInputChange('depositData', e.target.value)}
+                      valueFontSize="14px"
+                      placeholder="32 bytes (default: 0x000...000)"
+                    />
+                  </CalldataInputsGrid>
+                </CalldataInputsContainer>
+                
+                <CalldataOutputContainer>
+                  <Button
+                    onClick={handleGenerateCalldata}
+                    height={36}
+                    width={180}
+                  >
+                    Generate Calldata
+                  </Button>
+                  
+                  {calldataError && (
+                    <CalldataErrorMessage>
+                      ❌ Error: {calldataError}
+                    </CalldataErrorMessage>
+                  )}
+                  
+                  {generatedCalldata && (
+                    <>
+                      <ThemedText.BodySecondary>
+                        ✅ Calldata generated successfully:
+                      </ThemedText.BodySecondary>
+                      <CalldataTextArea 
+                        readOnly 
+                        value={generatedCalldata}
+                        placeholder="Generated calldata will appear here"
+                      />
+                    </>
+                  )}
+                </CalldataOutputContainer>
+              </CalldataWrapper>
+            ) : (
+              <EmptyStateContainer>
+                <EmptyStateMessage>
+                  Generate an attestation first to enable calldata generation
+                </EmptyStateMessage>
+              </EmptyStateContainer>
+            )}
+          </CalldataContent>
+        </CalldataSection>
+      </MainContent>
     </PageWrapper>
   );
 };
@@ -586,11 +867,23 @@ const PageWrapper = styled.div`
   }
 `;
 
+const MainContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 2200px;
+  height: auto;
+  
+  @media (max-width: 768px) {
+    gap: 0;
+  }
+`;
+
 const AppContainer = styled.div`
   display: grid;
   grid-template-columns: 300px 350px 1fr 1fr;
   width: 100%;
-  max-width: 1800px;
   height: 85vh;
   max-height: 700px;
   border-radius: 8px;
@@ -1126,6 +1419,109 @@ const AttestationResponseArea = styled.textarea`
 `;
 
 const AttestationErrorMessage = styled.div`
+  padding: 10px;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  border-radius: 4px;
+  color: #FF3B30;
+  font-size: 14px;
+`;
+
+const CalldataSection = styled.div`
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid ${colors.defaultBorderColor};
+  background: ${colors.container};
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 20px;
+  
+  @media (max-width: 768px) {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    padding: 15px;
+  }
+`;
+
+const CalldataContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+`;
+
+const CalldataWrapper = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  
+  @media (max-width: 1200px) {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+`;
+
+const CalldataInputsContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const CalldataInputsGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const CalldataOutputContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const CalldataTextArea = styled.textarea`
+  width: 100%;
+  min-height: 200px;
+  max-height: 400px;
+  padding: 10px;
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
+  box-sizing: border-box;
+  background: rgba(0, 128, 0, 0.05);
+  color: ${colors.white};
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    min-height: 150px;
+  }
+`;
+
+const CalldataErrorMessage = styled.div`
   padding: 10px;
   background: rgba(255, 59, 48, 0.1);
   border: 1px solid rgba(255, 59, 48, 0.3);
