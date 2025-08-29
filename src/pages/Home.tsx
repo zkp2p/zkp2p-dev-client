@@ -88,6 +88,14 @@ const Home: React.FC = () => {
     const stored = localStorage.getItem('chainId');
     return stored ? parseInt(stored) : 84532;
   });
+  const [verifyingContract, setVerifyingContract] = useState<string>(() => {
+    const stored = localStorage.getItem('verifyingContract');
+    return stored || '0x09618E223f22652e3d83B98614A745D12A7ae991';
+  });
+  const [attestationBaseUrl, setAttestationBaseUrl] = useState<string>(() => {
+    const stored = localStorage.getItem('attestationBaseUrl');
+    return stored || 'https://attestation-service-staging.zkp2p.xyz';
+  });
 
   const [triggerProofFetchPolling, setTriggerProofFetchPolling] = useState(false);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
@@ -124,6 +132,14 @@ const Home: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('chainId', chainId.toString());
   }, [chainId]);
+
+  useEffect(() => {
+    localStorage.setItem('verifyingContract', verifyingContract);
+  }, [verifyingContract]);
+
+  useEffect(() => {
+    localStorage.setItem('attestationBaseUrl', attestationBaseUrl);
+  }, [attestationBaseUrl]);
 
   useEffect(() => {
     refetchExtensionVersion();
@@ -276,10 +292,10 @@ const Home: React.FC = () => {
           signatures: proofData.proof?.signatures || proofData.signatures || {}
         },
         chainId: chainId,
-        verifyingContract: "0x09618E223f22652e3d83B98614A745D12A7ae991"
+        verifyingContract: verifyingContract
       };
       
-      const endpoint = `https://attestation-service-staging.zkp2p.xyz/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
+      const endpoint = `${attestationBaseUrl}/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -684,24 +700,47 @@ const Home: React.FC = () => {
             {proofStatus === 'success' ? (
               <AttestationContainer>
                 <AttestationControls>
-                  <ChainIdSelect
-                    value={chainId}
-                    onChange={(e) => setChainId(parseInt(e.target.value))}
-                    disabled={attestationLoading}
-                  >
-                    <option value="84532">Base Sepolia (84532)</option>
-                    <option value="8453">Base (8453)</option>
-                    <option value="31337">Local (31337)</option>
-                  </ChainIdSelect>
-                  <Button
-                    onClick={handleSendToAttestation}
-                    disabled={attestationLoading}
-                    loading={attestationLoading}
-                    height={36}
-                    width={140}
-                  >
-                    Verify Proof
-                  </Button>
+                  <Input
+                    label="Attestation Service URL"
+                    name="attestationBaseUrl"
+                    value={attestationBaseUrl}
+                    onChange={(e) => setAttestationBaseUrl(e.target.value)}
+                    valueFontSize="14px"
+                    placeholder="https://attestation-service-staging.zkp2p.xyz"
+                    readOnly={attestationLoading}
+                  />
+                  <StyledInputContainer>
+                    <StyledInputLabel>Chain</StyledInputLabel>
+                    <StyledSelect
+                      value={chainId}
+                      onChange={(e) => setChainId(parseInt(e.target.value))}
+                      disabled={attestationLoading}
+                    >
+                      <option value="84532">Base Sepolia (84532)</option>
+                      <option value="8453">Base (8453)</option>
+                      <option value="31337">Local (31337)</option>
+                    </StyledSelect>
+                  </StyledInputContainer>
+                  <Input
+                    label="Verifying Contract"
+                    name="verifyingContract"
+                    value={verifyingContract}
+                    onChange={(e) => setVerifyingContract(e.target.value)}
+                    valueFontSize="12px"
+                    placeholder="0x09618E223f22652e3d83B98614A745D12A7ae991"
+                    readOnly={attestationLoading}
+                  />
+                  <ButtonContainer>
+                    <Button
+                      onClick={handleSendToAttestation}
+                      disabled={attestationLoading}
+                      loading={attestationLoading}
+                      height={48}
+                      width={216}
+                    >
+                      Verify Proof
+                    </Button>
+                  </ButtonContainer>
                 </AttestationControls>
                 {attestationResponse && (
                   <AttestationResultSection>
@@ -801,13 +840,15 @@ const Home: React.FC = () => {
                 </CalldataInputsContainer>
                 
                 <CalldataOutputContainer>
-                  <Button
-                    onClick={handleGenerateCalldata}
-                    height={36}
-                    width={180}
-                  >
-                    Generate Calldata
-                  </Button>
+                  <ButtonContainer>
+                    <Button
+                      onClick={handleGenerateCalldata}
+                      height={48}
+                      width={216}
+                    >
+                      Generate Calldata
+                    </Button>
+                  </ButtonContainer>
                   
                   {calldataError && (
                     <CalldataErrorMessage>
@@ -850,8 +891,11 @@ const PageWrapper = styled.div`
   align-items: flex-start;
   padding: 1rem;
   width: 100%;
+  max-width: 100vw;
   height: 100vh;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
   
   /* Tablet view - allow vertical scrolling */
   @media (max-width: 1400px) and (min-width: 769px) {
@@ -872,8 +916,9 @@ const MainContent = styled.div`
   flex-direction: column;
   gap: 20px;
   width: 100%;
-  max-width: 2200px;
+  max-width: min(2200px, 100vw - 2rem);
   height: auto;
+  box-sizing: border-box;
   
   @media (max-width: 768px) {
     gap: 0;
@@ -882,7 +927,7 @@ const MainContent = styled.div`
 
 const AppContainer = styled.div`
   display: grid;
-  grid-template-columns: 300px 350px 1fr 1fr;
+  grid-template-columns: minmax(280px, 300px) minmax(320px, 350px) minmax(0, 1fr) minmax(0, 1fr);
   width: 100%;
   height: 85vh;
   max-height: 700px;
@@ -891,6 +936,7 @@ const AppContainer = styled.div`
   overflow: hidden;
   background: ${colors.container};
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
   
   /* Tablet view (landscape) - 2x2 grid with scrollable container */
   @media (max-width: 1400px) and (min-width: 769px) {
@@ -937,25 +983,11 @@ const AppContainer = styled.div`
 
 const LeftPanel = styled.div`
   padding: 15px;
-  overflow-y: auto;
+  overflow: hidden;
   border-right: 1px solid ${colors.defaultBorderColor};
   height: 100%;
-  
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.5);
-    border-radius: 20px;
-  }
+  display: flex;
+  flex-direction: column;
   
   /* Tablet view (landscape) - 2x2 grid */
   @media (max-width: 1400px) and (min-width: 769px) {
@@ -976,25 +1008,11 @@ const LeftPanel = styled.div`
 
 const MiddlePanel = styled.div`
   padding: 15px;
-  overflow-y: auto;
+  overflow: hidden;
   border-right: 1px solid ${colors.defaultBorderColor};
   height: 100%;
-  
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.5);
-    border-radius: 20px;
-  }
+  display: flex;
+  flex-direction: column;
   
   /* Tablet view (landscape) - 2x2 grid */
   @media (max-width: 1400px) and (min-width: 769px) {
@@ -1015,25 +1033,11 @@ const MiddlePanel = styled.div`
 
 const ProofPanel = styled.div`
   padding: 15px;
-  overflow-y: auto;
+  overflow: hidden;
   border-right: 1px solid ${colors.defaultBorderColor};
   height: 100%;
-  
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.5);
-    border-radius: 20px;
-  }
+  display: flex;
+  flex-direction: column;
   
   /* Tablet view (landscape) - 2x2 grid */
   @media (max-width: 1400px) and (min-width: 769px) {
@@ -1059,11 +1063,33 @@ const Section = styled.div`
   flex-direction: column;
   gap: 12px;
   height: 100%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  /* Custom scrollbar for internal content */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.3) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.3);
+    border-radius: 20px;
+  }
   
   /* Ensure content doesn't overflow in tablet view */
   @media (max-width: 1400px) and (min-width: 769px) {
     height: 100%;
-    min-height: 0; /* Allow proper sizing within grid */
+    min-height: 0;
     overflow-y: auto;
   }
 `;
@@ -1291,24 +1317,11 @@ const AdvancedContent = styled.div`
 
 const AttestationPanel = styled.div`
   padding: 15px;
-  overflow-y: auto;
+  overflow: hidden;
   height: 100%;
-  
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.5);
-    border-radius: 20px;
-  }
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   
   /* Tablet view (landscape) - 2x2 grid */
   @media (max-width: 1400px) and (min-width: 769px) {
@@ -1332,18 +1345,22 @@ const AttestationContainer = styled.div`
   gap: 15px;
   justify-content: space-between;
   height: 100%;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
 `;
 
 const AttestationControls = styled.div`
   display: flex;
-  flex-direction: row;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  align-items: stretch;
   
   @media (max-width: 480px) {
     flex-direction: column;
     
-    select, button {
+    select, button, input {
       width: 100%;
     }
   }
@@ -1356,26 +1373,50 @@ const AttestationResultSection = styled.div`
   flex: 1;
 `;
 
-const ChainIdSelect = styled.select`
-  background: rgba(0, 0, 0, 0.3);
-  color: ${colors.white};
+const StyledInputContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border-radius: 16px;
   border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 4px;
-  padding: 6px 10px;
+  background-color: ${colors.inputDefaultColor};
+  width: 100%;
+  box-sizing: border-box;
+
+  &:focus-within {
+    border-color: ${colors.inputPlaceholderColor};
+  }
+`;
+
+const StyledInputLabel = styled.label`
+  font-size: 14px;
+  font-weight: 550;
+  color: #CED4DA;
+  margin-bottom: 10px;
+`;
+
+const StyledSelect = styled.select`
+  width: 100%;
+  border: 0;
+  padding: 0;
+  color: ${colors.darkText};
+  background-color: ${colors.inputDefaultColor};
   font-size: 14px;
   cursor: pointer;
-  
+
+  &:focus {
+    box-shadow: none;
+    outline: none;
+  }
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
-  
-  &:hover:not(:disabled) {
-    border-color: ${colors.selectorHoverBorder};
-  }
-  
+
   option {
     background: ${colors.container};
+    color: ${colors.darkText};
   }
 `;
 
@@ -1429,11 +1470,13 @@ const AttestationErrorMessage = styled.div`
 
 const CalldataSection = styled.div`
   width: 100%;
+  min-height: fit-content;
   border-radius: 8px;
   border: 1px solid ${colors.defaultBorderColor};
   background: ${colors.container};
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   padding: 20px;
+  margin-bottom: 20px;
   
   @media (max-width: 768px) {
     border-radius: 0;
@@ -1453,10 +1496,13 @@ const CalldataWrapper = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
+  width: 100%;
+  min-height: fit-content;
   
   @media (max-width: 1200px) {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto;
+    gap: 15px;
   }
 `;
 
@@ -1484,8 +1530,9 @@ const CalldataOutputContainer = styled.div`
 
 const CalldataTextArea = styled.textarea`
   width: 100%;
-  min-height: 200px;
-  max-height: 400px;
+  min-height: 150px;
+  height: auto;
+  max-height: 300px;
   padding: 10px;
   border: 1px solid ${colors.defaultBorderColor};
   border-radius: 4px;
