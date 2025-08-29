@@ -44,6 +44,13 @@ const Home: React.FC = () => {
   const [resultProof, setResultProof] = useState('');
   const [proofGenerationStartTime, setProofGenerationStartTime] = useState<number | null>(null);
   const [proofGenerationDuration, setProofGenerationDuration] = useState<number | null>(null);
+  const [attestationResponse, setAttestationResponse] = useState<string | null>(null);
+  const [attestationLoading, setAttestationLoading] = useState(false);
+  const [attestationError, setAttestationError] = useState<string | null>(null);
+  const [chainId, setChainId] = useState<number>(() => {
+    const stored = localStorage.getItem('chainId');
+    return stored ? parseInt(stored) : 84532;
+  });
 
   const [triggerProofFetchPolling, setTriggerProofFetchPolling] = useState(false);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
@@ -63,6 +70,10 @@ const Home: React.FC = () => {
   } = useExtensionProxyProofs();
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('chainId', chainId.toString());
+  }, [chainId]);
 
   useEffect(() => {
     refetchExtensionVersion();
@@ -174,6 +185,8 @@ const Home: React.FC = () => {
     setResultProof('');
     setProofGenerationStartTime(Date.now());
     setProofGenerationDuration(null);
+    setAttestationResponse(null);
+    setAttestationError(null);
 
     setTriggerProofFetchPolling(false);
     if (intervalId) {
@@ -189,6 +202,55 @@ const Home: React.FC = () => {
     generatePaymentProof(metadataPlatform, intentHash, meta.originalIndex, proofIndex);
 
     setTriggerProofFetchPolling(true);
+  };
+
+  const handleSendToAttestation = async () => {
+    if (!resultProof) return;
+    
+    setAttestationLoading(true);
+    setAttestationError(null);
+    setAttestationResponse(null);
+    
+    try {
+      const proofData = JSON.parse(resultProof);
+      const proofClaim = proofData.proof?.claim || proofData.claim;
+      
+      if (!proofClaim) {
+        throw new Error('No proof claim found in the generated proof');
+      }
+      
+      const payload = {
+        proofType: "reclaim",
+        proof: {
+          claim: proofClaim,
+          signatures: proofData.proof?.signatures || proofData.signatures || {}
+        },
+        chainId: chainId
+      };
+      
+      const endpoint = `https://attestation-service-staging.zkp2p.xyz/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(responseData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      setAttestationResponse(JSON.stringify(responseData, null, 2));
+    } catch (error) {
+      console.error('Error sending to attestation service:', error);
+      setAttestationError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setAttestationLoading(false);
+    }
   };
 
   const browserSvgIcon = () =>
@@ -376,6 +438,47 @@ const Home: React.FC = () => {
                       }
                     </ThemedText.BodySecondary>
                     <ProofTextArea readOnly value={resultProof} />
+                    {proofStatus === 'success' && (
+                      <AttestationSection>
+                        <AttestationDivider />
+                        <AttestationHeader>
+                          <AttestationHeaderLeft>
+                            <ThemedText.BodySmall>Attestation Service</ThemedText.BodySmall>
+                            <ChainIdSelect
+                              value={chainId}
+                              onChange={(e) => setChainId(parseInt(e.target.value))}
+                              disabled={attestationLoading}
+                            >
+                              <option value="84532">Base Sepolia (84532)</option>
+                              <option value="8453">Base (8453)</option>
+                              <option value="31337">Local (31337)</option>
+                            </ChainIdSelect>
+                          </AttestationHeaderLeft>
+                          <Button
+                            onClick={handleSendToAttestation}
+                            disabled={attestationLoading}
+                            loading={attestationLoading}
+                            height={36}
+                            width={180}
+                          >
+                            Verify Attestation
+                          </Button>
+                        </AttestationHeader>
+                        {attestationResponse && (
+                          <>
+                            <ThemedText.BodySecondary>
+                              ✅ Attestation Response:
+                            </ThemedText.BodySecondary>
+                            <AttestationResponseArea readOnly value={attestationResponse} />
+                          </>
+                        )}
+                        {attestationError && (
+                          <AttestationErrorMessage>
+                            ❌ Attestation Error: {attestationError}
+                          </AttestationErrorMessage>
+                        )}
+                      </AttestationSection>
+                    )}
                   </>
                 )}
                 {proofStatus === 'timeout' && (
@@ -704,6 +807,96 @@ const AdvancedContent = styled.div`
   flex-direction: column;
   gap: 15px;
   border-top: 1px solid ${colors.defaultBorderColor};
+`;
+
+const AttestationSection = styled.div`
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+`;
+
+const AttestationDivider = styled.div`
+  height: 1px;
+  background: ${colors.defaultBorderColor};
+  width: 100%;
+`;
+
+const AttestationHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const AttestationHeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 15px;
+`;
+
+const ChainIdSelect = styled.select`
+  background: rgba(0, 0, 0, 0.3);
+  color: ${colors.white};
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 14px;
+  cursor: pointer;
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  &:hover:not(:disabled) {
+    border-color: ${colors.selectorHoverBorder};
+  }
+  
+  option {
+    background: ${colors.container};
+  }
+`;
+
+const AttestationResponseArea = styled.textarea`
+  width: 100%;
+  min-height: 200px;
+  padding: 10px;
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  resize: none;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  box-sizing: border-box;
+  background: rgba(0, 128, 0, 0.1);
+  color: ${colors.white};
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+  }
+`;
+
+const AttestationErrorMessage = styled.div`
+  padding: 10px;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  border-radius: 4px;
+  color: #FF3B30;
+  font-size: 14px;
 `;
 
 export { Home };
