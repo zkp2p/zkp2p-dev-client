@@ -17,6 +17,41 @@ const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-ext
 const PROOF_FETCH_INTERVAL = 3000;
 const PROOF_GENERATION_TIMEOUT = 60000;
 
+// Step indicator component
+const StepIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding-top: 5px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid ${colors.defaultBorderColor};
+  position: sticky;
+  top: 0;
+  background: ${colors.container};
+  z-index: 1;
+`;
+
+const StepNumber = styled.div`
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: ${colors.selectorHoverBorder};
+  color: ${colors.white};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  flex-shrink: 0;
+`;
+
+const StepLabel = styled.div`
+  font-weight: 600;
+  font-size: 14px;
+  color: ${colors.white};
+`;
+
 const Home: React.FC = () => {
   const [intentHash, setIntentHash] = useState(() => {
     return localStorage.getItem('intentHash') || '0x0000000000000000000000000000000000000000000000000000000000000000';
@@ -263,6 +298,10 @@ const Home: React.FC = () => {
       <AppContainer>
         <LeftPanel>
           <Section>
+            <StepIndicator>
+              <StepNumber>1</StepNumber>
+              <StepLabel>Enter Provider</StepLabel>
+            </StepIndicator>
             <StatusItem>
               <StatusLabel>Version:</StatusLabel>
               <StatusValue>
@@ -356,6 +395,10 @@ const Home: React.FC = () => {
 
         <MiddlePanel>
           <Section>
+            <StepIndicator>
+              <StepNumber>2</StepNumber>
+              <StepLabel>Fetch Metadata</StepLabel>
+            </StepIndicator>
             <StatusItem>
               <StatusLabel>Available Metadata</StatusLabel>
             </StatusItem>
@@ -407,8 +450,12 @@ const Home: React.FC = () => {
           </Section>
         </MiddlePanel>
 
-        <RightPanel>
+        <ProofPanel>
           <Section>
+            <StepIndicator>
+              <StepNumber>3</StepNumber>
+              <StepLabel>Generate zkTLS Proof</StepLabel>
+            </StepIndicator>
             <StatusItem>
               <StatusLabel>Proof Status</StatusLabel>
             </StatusItem>
@@ -438,47 +485,6 @@ const Home: React.FC = () => {
                       }
                     </ThemedText.BodySecondary>
                     <ProofTextArea readOnly value={resultProof} />
-                    {proofStatus === 'success' && (
-                      <AttestationSection>
-                        <AttestationDivider />
-                        <AttestationHeader>
-                          <AttestationHeaderLeft>
-                            <ThemedText.BodySmall>Attestation Service</ThemedText.BodySmall>
-                            <ChainIdSelect
-                              value={chainId}
-                              onChange={(e) => setChainId(parseInt(e.target.value))}
-                              disabled={attestationLoading}
-                            >
-                              <option value="84532">Base Sepolia (84532)</option>
-                              <option value="8453">Base (8453)</option>
-                              <option value="31337">Local (31337)</option>
-                            </ChainIdSelect>
-                          </AttestationHeaderLeft>
-                          <Button
-                            onClick={handleSendToAttestation}
-                            disabled={attestationLoading}
-                            loading={attestationLoading}
-                            height={36}
-                            width={180}
-                          >
-                            Verify Attestation
-                          </Button>
-                        </AttestationHeader>
-                        {attestationResponse && (
-                          <>
-                            <ThemedText.BodySecondary>
-                              ✅ Attestation Response:
-                            </ThemedText.BodySecondary>
-                            <AttestationResponseArea readOnly value={attestationResponse} />
-                          </>
-                        )}
-                        {attestationError && (
-                          <AttestationErrorMessage>
-                            ❌ Attestation Error: {attestationError}
-                          </AttestationErrorMessage>
-                        )}
-                      </AttestationSection>
-                    )}
                   </>
                 )}
                 {proofStatus === 'timeout' && (
@@ -495,7 +501,62 @@ const Home: React.FC = () => {
               </EmptyStateContainer>
             )}
           </Section>
-        </RightPanel>
+        </ProofPanel>
+
+        <AttestationPanel>
+          <Section>
+            <StepIndicator>
+              <StepNumber>4</StepNumber>
+              <StepLabel>Verify zkTLS Proof</StepLabel>
+            </StepIndicator>
+            <StatusItem>
+              <StatusLabel>Attestation Service</StatusLabel>
+            </StatusItem>
+            {proofStatus === 'success' ? (
+              <AttestationContainer>
+                <AttestationControls>
+                  <ChainIdSelect
+                    value={chainId}
+                    onChange={(e) => setChainId(parseInt(e.target.value))}
+                    disabled={attestationLoading}
+                  >
+                    <option value="84532">Base Sepolia (84532)</option>
+                    <option value="8453">Base (8453)</option>
+                    <option value="31337">Local (31337)</option>
+                  </ChainIdSelect>
+                  <Button
+                    onClick={handleSendToAttestation}
+                    disabled={attestationLoading}
+                    loading={attestationLoading}
+                    height={36}
+                    width={140}
+                  >
+                    Verify Proof
+                  </Button>
+                </AttestationControls>
+                {attestationResponse && (
+                  <AttestationResultSection>
+                    <ThemedText.BodySecondary>
+                      ✅ Attestation Response:
+                    </ThemedText.BodySecondary>
+                    <AttestationResponseArea readOnly value={attestationResponse} />
+                  </AttestationResultSection>
+                )}
+                {attestationError && (
+                  <AttestationErrorMessage>
+                    ❌ Attestation Error: {attestationError}
+                  </AttestationErrorMessage>
+                )}
+              </AttestationContainer>
+            ) : (
+              <EmptyStateContainer>
+                <EmptyStateMessage>
+                  Generate a proof first to enable attestation service
+                </EmptyStateMessage>
+              </EmptyStateContainer>
+            )}
+          </Section>
+        </AttestationPanel>
       </AppContainer>
     </PageWrapper>
   );
@@ -507,25 +568,85 @@ const PageWrapper = styled.div`
   justify-content: center;
   align-items: flex-start;
   padding: 1rem;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  
+  /* Tablet view - allow vertical scrolling */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    height: 100vh;
+    overflow: auto;
+  }
+  
+  @media (max-width: 768px) {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    align-items: flex-start;
+  }
 `;
 
 const AppContainer = styled.div`
-  display: flex;
+  display: grid;
+  grid-template-columns: 300px 350px 1fr 1fr;
   width: 100%;
-  max-width: 1400px;
+  max-width: 1800px;
+  height: 85vh;
+  max-height: 700px;
   border-radius: 8px;
   border: 1px solid ${colors.defaultBorderColor};
   overflow: hidden;
   background: ${colors.container};
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  
+  /* Tablet view (landscape) - 2x2 grid with scrollable container */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 450px 450px; /* Fixed heights for each row */
+    row-gap: 0;
+    column-gap: 0;
+    height: 90vh; /* Fixed viewport height */
+    max-height: 90vh;
+    overflow-y: auto; /* Enable vertical scrolling on the container */
+    overflow-x: hidden;
+    padding: 0;
+    
+    /* Custom scrollbar for the container */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+    
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background-color: rgba(155, 155, 155, 0.5);
+      border-radius: 20px;
+    }
+  }
+  
+  /* Mobile view - stack vertically */
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(4, auto);
+    height: auto;
+    max-height: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    overflow: visible;
+  }
 `;
 
 const LeftPanel = styled.div`
-  flex: 1;
-  max-width: 340px;
-  padding: 20px;
+  padding: 15px;
   overflow-y: auto;
   border-right: 1px solid ${colors.defaultBorderColor};
+  height: 100%;
   
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
@@ -541,14 +662,30 @@ const LeftPanel = styled.div`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
+  }
+  
+  /* Tablet view (landscape) - 2x2 grid */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    border-right: 1px solid ${colors.defaultBorderColor};
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: 100%; /* Fill the grid cell */
+    min-height: 0; /* Allow proper sizing within grid */
+    overflow-y: auto;
+  }
+  
+  /* Mobile view */
+  @media (max-width: 768px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto;
   }
 `;
 
 const MiddlePanel = styled.div`
-  flex: 1.2;
-  padding: 20px;
+  padding: 15px;
   overflow-y: auto;
   border-right: 1px solid ${colors.defaultBorderColor};
+  height: 100%;
   
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
@@ -564,13 +701,30 @@ const MiddlePanel = styled.div`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
+  }
+  
+  /* Tablet view (landscape) - 2x2 grid */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: 100%; /* Fill the grid cell */
+    min-height: 0; /* Allow proper sizing within grid */
+    overflow-y: auto;
+  }
+  
+  /* Mobile view */
+  @media (max-width: 768px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto;
   }
 `;
 
-const RightPanel = styled.div`
-  flex: 2;
-  padding: 20px;
+const ProofPanel = styled.div`
+  padding: 15px;
   overflow-y: auto;
+  border-right: 1px solid ${colors.defaultBorderColor};
+  height: 100%;
   
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
@@ -586,22 +740,46 @@ const RightPanel = styled.div`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
+  }
+  
+  /* Tablet view (landscape) - 2x2 grid */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    border-right: 1px solid ${colors.defaultBorderColor};
+    border-bottom: none;
+    height: 100%; /* Fill the grid cell */
+    min-height: 0; /* Allow proper sizing within grid */
+    overflow-y: auto;
+  }
+  
+  /* Mobile view */
+  @media (max-width: 768px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto;
   }
 `;
 
 const Section = styled.div`
-  padding: 10px;
-  margin-bottom: 15px;
+  padding: 5px;
+  margin-bottom: 10px;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 12px;
+  height: 100%;
+  
+  /* Ensure content doesn't overflow in tablet view */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    height: 100%;
+    min-height: 0; /* Allow proper sizing within grid */
+    overflow-y: auto;
+  }
 `;
 
 const StatusItem = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 5px;
+  margin-top: 2px;
 `;
 
 const StatusLabel = styled.div`
@@ -618,15 +796,15 @@ const ButtonContainer = styled.div`
   display: flex;
   justify-content: center;
   width: 100%;
-  margin-top: 5px;
+  margin-top: 2px;
 `;
 
 const MetadataList = styled.div`
-  max-height: 600px;
+  max-height: calc(100vh - 200px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
@@ -686,7 +864,8 @@ const ProofContainer = styled.div`
 const ProofTextArea = styled.textarea`
   width: 100%;
   flex: 1;
-  min-height: 500px;
+  min-height: 300px;
+  max-height: calc(100vh - 250px);
   margin-top: 10px;
   padding: 10px;
   border: 1px solid ${colors.defaultBorderColor};
@@ -715,6 +894,10 @@ const ProofTextArea = styled.textarea`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    min-height: 250px;
   }
 `;
 
@@ -773,8 +956,12 @@ const EmptyStateContainer = styled.div`
   align-items: center;
   justify-content: center;
   height: 100%;
-  min-height: 550px;
+  min-height: 300px;
   padding: 20px;
+  
+  @media (max-width: 768px) {
+    min-height: 200px;
+  }
 `;
 
 const EmptyStateMessage = styled(ThemedText.BodySmall)`
@@ -809,29 +996,71 @@ const AdvancedContent = styled.div`
   border-top: 1px solid ${colors.defaultBorderColor};
 `;
 
-const AttestationSection = styled.div`
-  margin-top: 20px;
+const AttestationPanel = styled.div`
+  padding: 15px;
+  overflow-y: auto;
+  height: 100%;
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+  }
+  
+  /* Tablet view (landscape) - 2x2 grid */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    border-right: none;
+    border-bottom: none;
+    height: 100%; /* Fill the grid cell */
+    min-height: 0; /* Allow proper sizing within grid */
+    overflow-y: auto;
+  }
+  
+  /* Mobile view */
+  @media (max-width: 768px) {
+    border-bottom: none;
+    height: auto;
+  }
+`;
+
+const AttestationContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: 15px;
-`;
-
-const AttestationDivider = styled.div`
-  height: 1px;
-  background: ${colors.defaultBorderColor};
-  width: 100%;
-`;
-
-const AttestationHeader = styled.div`
-  display: flex;
   justify-content: space-between;
-  align-items: center;
+  height: 100%;
 `;
 
-const AttestationHeaderLeft = styled.div`
+const AttestationControls = styled.div`
   display: flex;
-  align-items: center;
-  gap: 15px;
+  flex-direction: row;
+  gap: 10px;
+  flex-wrap: wrap;
+  
+  @media (max-width: 480px) {
+    flex-direction: column;
+    
+    select, button {
+      width: 100%;
+    }
+  }
+`;
+
+const AttestationResultSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
 `;
 
 const ChainIdSelect = styled.select`
@@ -859,7 +1088,9 @@ const ChainIdSelect = styled.select`
 
 const AttestationResponseArea = styled.textarea`
   width: 100%;
-  min-height: 200px;
+  flex: 1;
+  min-height: 250px;
+  max-height: calc(100vh - 300px);
   padding: 10px;
   border: 1px solid ${colors.defaultBorderColor};
   border-radius: 4px;
@@ -887,6 +1118,10 @@ const AttestationResponseArea = styled.textarea`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    min-height: 250px;
   }
 `;
 
