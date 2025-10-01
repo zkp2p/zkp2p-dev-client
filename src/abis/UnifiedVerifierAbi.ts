@@ -2,8 +2,8 @@ export const unifiedVerifierAbi = [
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "_escrow",
+        "internalType": "contract IOrchestrator",
+        "name": "_orchestrator",
         "type": "address"
       },
       {
@@ -66,12 +66,6 @@ export const unifiedVerifierAbi = [
         "internalType": "bytes32",
         "name": "paymentMethod",
         "type": "bytes32"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestampBuffer",
-        "type": "uint256"
       }
     ],
     "name": "PaymentMethodAdded",
@@ -96,61 +90,47 @@ export const unifiedVerifierAbi = [
       {
         "indexed": true,
         "internalType": "bytes32",
-        "name": "paymentMethod",
+        "name": "intentHash",
         "type": "bytes32"
       },
       {
         "indexed": true,
         "internalType": "bytes32",
-        "name": "providerHash",
-        "type": "bytes32"
-      }
-    ],
-    "name": "ProviderHashAdded",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "bytes32",
-        "name": "paymentMethod",
+        "name": "method",
         "type": "bytes32"
       },
       {
         "indexed": true,
         "internalType": "bytes32",
-        "name": "providerHash",
-        "type": "bytes32"
-      }
-    ],
-    "name": "ProviderHashRemoved",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "bytes32",
-        "name": "paymentMethod",
+        "name": "currency",
         "type": "bytes32"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "oldBuffer",
+        "name": "amount",
         "type": "uint256"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "newBuffer",
+        "name": "timestamp",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "paymentId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "payeeId",
+        "type": "bytes32"
       }
     ],
-    "name": "TimestampBufferUpdated",
+    "name": "PaymentVerified",
     "type": "event"
   },
   {
@@ -172,37 +152,9 @@ export const unifiedVerifierAbi = [
         "internalType": "bytes32",
         "name": "_paymentMethod",
         "type": "bytes32"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_timestampBuffer",
-        "type": "uint256"
-      },
-      {
-        "internalType": "bytes32[]",
-        "name": "_providerHashes",
-        "type": "bytes32[]"
       }
     ],
     "name": "addPaymentMethod",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "bytes32",
-        "name": "_paymentMethod",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "bytes32[]",
-        "name": "_providerHashes",
-        "type": "bytes32[]"
-      }
-    ],
-    "name": "addProviderHashes",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -237,54 +189,11 @@ export const unifiedVerifierAbi = [
     "inputs": [
       {
         "internalType": "bytes32",
-        "name": "_paymentMethod",
-        "type": "bytes32"
-      }
-    ],
-    "name": "getProviderHashes",
-    "outputs": [
-      {
-        "internalType": "bytes32[]",
         "name": "",
-        "type": "bytes32[]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "bytes32",
-        "name": "_paymentMethod",
         "type": "bytes32"
       }
     ],
-    "name": "getTimestampBuffer",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "bytes32",
-        "name": "_paymentMethod",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "bytes32",
-        "name": "_providerHash",
-        "type": "bytes32"
-      }
-    ],
-    "name": "isProviderHash",
+    "name": "isPaymentMethod",
     "outputs": [
       {
         "internalType": "bool",
@@ -313,7 +222,7 @@ export const unifiedVerifierAbi = [
     "name": "orchestrator",
     "outputs": [
       {
-        "internalType": "address",
+        "internalType": "contract IOrchestrator",
         "name": "",
         "type": "address"
       }
@@ -367,24 +276,6 @@ export const unifiedVerifierAbi = [
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "bytes32",
-        "name": "_paymentMethod",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "bytes32[]",
-        "name": "_providerHashes",
-        "type": "bytes32[]"
-      }
-    ],
-    "name": "removeProviderHashes",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
     "inputs": [],
     "name": "renounceOwnership",
     "outputs": [],
@@ -407,48 +298,6 @@ export const unifiedVerifierAbi = [
   {
     "inputs": [
       {
-        "internalType": "bytes32",
-        "name": "_paymentMethod",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_newTimestampBuffer",
-        "type": "uint256"
-      }
-    ],
-    "name": "setTimestampBuffer",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "bytes32",
-        "name": "",
-        "type": "bytes32"
-      }
-    ],
-    "name": "store",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "initialized",
-        "type": "bool"
-      },
-      {
-        "internalType": "uint256",
-        "name": "timestampBuffer",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
         "internalType": "address",
         "name": "newOwner",
         "type": "address"
@@ -464,43 +313,13 @@ export const unifiedVerifierAbi = [
       {
         "components": [
           {
-            "internalType": "bytes",
-            "name": "paymentProof",
-            "type": "bytes"
-          },
-          {
-            "internalType": "address",
-            "name": "depositToken",
-            "type": "address"
-          },
-          {
-            "internalType": "uint256",
-            "name": "intentAmount",
-            "type": "uint256"
-          },
-          {
-            "internalType": "uint256",
-            "name": "intentTimestamp",
-            "type": "uint256"
-          },
-          {
             "internalType": "bytes32",
-            "name": "payeeDetails",
+            "name": "intentHash",
             "type": "bytes32"
-          },
-          {
-            "internalType": "bytes32",
-            "name": "fiatCurrency",
-            "type": "bytes32"
-          },
-          {
-            "internalType": "uint256",
-            "name": "conversionRate",
-            "type": "uint256"
           },
           {
             "internalType": "bytes",
-            "name": "depositData",
+            "name": "paymentProof",
             "type": "bytes"
           },
           {

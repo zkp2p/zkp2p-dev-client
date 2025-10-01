@@ -14,6 +14,7 @@ import Spinner from '@components/common/Spinner';
 import { ChevronRight } from 'react-feather';
 import { ethers } from 'ethers';
 import { unifiedVerifierAbi } from '../abis/UnifiedVerifierAbi';
+import { keccak256 } from '@helpers/keccack';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 const PROOF_FETCH_INTERVAL = 3000;
@@ -28,10 +29,7 @@ const StepIndicator = styled.div`
   padding-top: 5px;
   padding-bottom: 15px;
   border-bottom: 1px solid ${colors.defaultBorderColor};
-  position: sticky;
-  top: 0;
   background: ${colors.container};
-  z-index: 1;
 `;
 
 const StepNumber = styled.div`
@@ -56,7 +54,7 @@ const StepLabel = styled.div`
 
 const Home: React.FC = () => {
   const [intentHash, setIntentHash] = useState(() => {
-    return localStorage.getItem('intentHash') || '0x0000000000000000000000000000000000000000000000000000000000000000';
+    return localStorage.getItem('intentHash') || '11114168264614898234767045087100892814911930784849242636571146569793237988689';
   });
   const [actionType, setActionType] = useState(() => {
     return localStorage.getItem('actionType') || 'transfer_venmo';
@@ -90,7 +88,7 @@ const Home: React.FC = () => {
   });
   const [verifyingContract, setVerifyingContract] = useState<string>(() => {
     const stored = localStorage.getItem('verifyingContract');
-    return stored || '0x09618E223f22652e3d83B98614A745D12A7ae991';
+    return stored || '0xA22aE87e99d614e6e04d787c67C609E24F223F6C';
   });
   const [attestationBaseUrl, setAttestationBaseUrl] = useState<string>(() => {
     const stored = localStorage.getItem('attestationBaseUrl');
@@ -102,7 +100,7 @@ const Home: React.FC = () => {
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Calldata generation state
-  const [calldataInputs, setCalldataInputs] = useState({
+  const DEFAULT_CALLDATA_INPUTS = {
     depositToken: '',
     intentAmount: '',
     intentTimestamp: '',
@@ -110,9 +108,37 @@ const Home: React.FC = () => {
     fiatCurrency: '',
     conversionRate: '',
     depositData: '0x0000000000000000000000000000000000000000000000000000000000000000'
+  };
+
+  const CALLDATA_LS_PREFIX = 'verifyPaymentCalldata:';
+
+  const [calldataInputs, setCalldataInputs] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`${CALLDATA_LS_PREFIX}${intentHash}`);
+      return saved ? JSON.parse(saved) : DEFAULT_CALLDATA_INPUTS;
+    } catch {
+      return DEFAULT_CALLDATA_INPUTS;
+    }
   });
   const [generatedCalldata, setGeneratedCalldata] = useState<string>('');
   const [calldataError, setCalldataError] = useState<string | null>(null);
+
+  // Persist calldata inputs per-intent
+  useEffect(() => {
+    try {
+      localStorage.setItem(`${CALLDATA_LS_PREFIX}${intentHash}`, JSON.stringify(calldataInputs));
+    } catch {}
+  }, [calldataInputs, intentHash]);
+
+  // Load saved calldata inputs when intentHash changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`${CALLDATA_LS_PREFIX}${intentHash}`);
+      setCalldataInputs(saved ? JSON.parse(saved) : DEFAULT_CALLDATA_INPUTS);
+    } catch {
+      setCalldataInputs(DEFAULT_CALLDATA_INPUTS);
+    }
+  }, [intentHash]);
 
   const {
     isSidebarInstalled,
@@ -272,31 +298,59 @@ const Home: React.FC = () => {
 
   const handleSendToAttestation = async () => {
     if (!resultProof) return;
-    
+
     setAttestationLoading(true);
     setAttestationError(null);
     setAttestationResponse(null);
-    
+
     try {
       const proofData = JSON.parse(resultProof);
       const proofClaim = proofData.proof?.claim || proofData.claim;
-      
+
       if (!proofClaim) {
         throw new Error('No proof claim found in the generated proof');
       }
-      
+
+      // Derive intent fields from existing inputs
+      const amount = calldataInputs.intentAmount || '0';
+      const timestampSec = calldataInputs.intentTimestamp
+        ? ethers.BigNumber.from(calldataInputs.intentTimestamp)
+        : ethers.BigNumber.from(0);
+      const timestampMs = timestampSec.mul(1000).toString();
+      const paymentMethod = keccak256(paymentPlatform);
+      const fiatCurrency = calldataInputs.fiatCurrency || keccak256('USD');
+      const conversionRate = calldataInputs.conversionRate || '0';
+      const payeeDetails = calldataInputs.payeeDetails || '0x0000000000000000000000000000000000000000000000000000000000000000';
+      // Normalize intentHash to bytes32 hex (support decimal input)
+      const intentHashInput = (intentHash || '').trim();
+      const intentHashHex = intentHashInput.startsWith('0x')
+        ? ethers.utils.hexZeroPad(intentHashInput, 32)
+        : ethers.utils.hexZeroPad(ethers.BigNumber.from(intentHashInput).toHexString(), 32);
+
       const payload = {
-        proofType: "reclaim",
+        proofType: 'reclaim',
         proof: {
           claim: proofClaim,
-          signatures: proofData.proof?.signatures || proofData.signatures || {}
+          signatures: proofData.proof?.signatures || proofData.signatures || {},
         },
         chainId: chainId,
-        verifyingContract: verifyingContract
+        verifyingContract: verifyingContract,
+        intent: {
+          intentHash: intentHashHex,
+          amount,
+          timestampMs,
+          paymentMethod,
+          fiatCurrency,
+          conversionRate,
+          payeeDetails,
+          timestampBufferMs: '10000000',
+        },
       };
-      
+
+      console.log('Payload:', payload);
+
       const endpoint = `${attestationBaseUrl}/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
-      
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -304,13 +358,15 @@ const Home: React.FC = () => {
         },
         body: JSON.stringify(payload),
       });
-      
+
       const responseData = await response.json();
-      
+
       if (!response.ok) {
-        throw new Error(responseData.error || `HTTP error! status: ${response.status}`);
+        throw new Error(
+          responseData.error || `HTTP error! status: ${response.status} ${responseData.message}`
+        );
       }
-      
+
       setAttestationResponse(JSON.stringify(responseData, null, 2));
     } catch (error) {
       console.error('Error sending to attestation service:', error);
@@ -325,58 +381,92 @@ const Home: React.FC = () => {
   const addToBrowserText = () =>
     browserName === 'Brave' ? 'Add to Brave' : 'Add to Chrome';
 
-  // Helper function to encode PaymentAttestation struct
+  // Helper function to encode PaymentAttestation struct (updated for new contract)
   const encodePaymentAttestation = (attestationResponse: any) => {
     const abiCoder = new ethers.utils.AbiCoder();
-    
-    // Extract the typed data values from the response
-    const typedData = attestationResponse.responseObject.typedDataValue;
-    const signature = attestationResponse.responseObject.signature;
-    
-    // Convert signature to bytes array format
-    const signaturesArray = signature ? [signature] : [];
-    
-    // Create the complete PaymentAttestation struct matching the contract
-    // The entire struct must be encoded as a single tuple
-    const paymentAttestationTuple = [
-      typedData.paymentMethod,                    // bytes32 paymentMethod
-      typedData.providerHash,            // bytes32 providerHash
-      typedData.intentHash,                       // bytes32 intentHash
-      // PaymentDetails as nested tuple
-      [
-        typedData.recipientId,                     // bytes32 recipientId
-        ethers.BigNumber.from(typedData.amount),  // uint256 amount (in cents)
-        ethers.BigNumber.from(typedData.timestamp), // uint256 timestamp (in milliseconds)
-        typedData.paymentId,                      // bytes32 paymentId
-        typedData.currency                        // bytes32 currency
-      ],
-      signaturesArray,                            // bytes[] signatures
-      typedData.dataHash                          // bytes32 dataHash
+
+    const respObj = attestationResponse.responseObject || attestationResponse;
+    const typedData = respObj.typedDataValue || respObj.typedData || {};
+
+    // signatures may be a single string or an array
+    const signaturesArray: string[] = Array.isArray(respObj.signatures)
+      ? respObj.signatures
+      : (respObj.signature ? [respObj.signature] : []);
+
+    // Helpers
+    const ZERO32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
+    const toBytes32 = (v?: any, fallback?: string) => {
+      try {
+        if (!v || v === '0x') return fallback || ZERO32;
+        if (ethers.utils.isHexString(v)) return ethers.utils.hexZeroPad(v, 32);
+        // if decimal-like string
+        if (typeof v === 'string' && /^\d+$/.test(v)) {
+          return ethers.utils.hexZeroPad(ethers.BigNumber.from(v).toHexString(), 32);
+        }
+        // hash arbitrary string to bytes32
+        if (typeof v === 'string') return keccak256(v);
+      } catch {}
+      return fallback || ZERO32;
+    };
+
+    // Normalize values from response/state
+    const method = toBytes32(typedData.method || typedData.paymentMethod || keccak256(paymentPlatform));
+    const currency = toBytes32(typedData.currency || calldataInputs.fiatCurrency || keccak256('USD'));
+
+    // PaymentDetails tuple: (method, payeeId, amount, currency, timestamp, paymentId)
+    const paymentDetailsTuple = [
+      method,                                                     // bytes32 method
+      toBytes32(typedData.payeeId || typedData.recipientId, toBytes32(calldataInputs.payeeDetails)), // bytes32 payeeId
+      ethers.BigNumber.from(typedData.amount || 0),               // uint256 amount (cents)
+      currency,                                                   // bytes32 currency
+      ethers.BigNumber.from(typedData.timestamp || 0),            // uint256 timestamp (ms)
+      toBytes32(typedData.paymentId),                             // bytes32 paymentId
     ];
-    
-    // Encode the entire PaymentAttestation as a single tuple
-    // This matches the contract's expected format for the paymentProof bytes parameter
-    const encodedData = abiCoder.encode(
-      ['tuple(bytes32,bytes32,bytes32,tuple(bytes32,uint256,uint256,bytes32,bytes32),bytes[],bytes32)'],
+
+    // IntentSnapshot tuple
+    const intentHashInput = (typedData.intentHash || intentHash || '').trim();
+    const intentHashHex = toBytes32(intentHashInput);
+
+    const intentSnapshotTuple = [
+      intentHashHex,                                              // bytes32 intentHash
+      ethers.BigNumber.from(calldataInputs.intentAmount || '0'),  // uint256 amount (tokens)
+      method,                                                     // bytes32 paymentMethod
+      toBytes32(calldataInputs.fiatCurrency, currency),           // bytes32 fiatCurrency
+      toBytes32(calldataInputs.payeeDetails),                     // bytes32 payeeDetails
+      ethers.BigNumber.from(calldataInputs.conversionRate || '0'),// uint256 conversionRate
+      ethers.BigNumber.from(calldataInputs.intentTimestamp || '0'),// uint256 signalTimestamp (sec)
+      ethers.BigNumber.from('10000000'),                          // uint256 timestampBuffer (ms)
+    ];
+
+    // Encode payload data and compute hash (or use provided dataHash)
+    const dataPayload = abiCoder.encode(
+      [
+        'tuple(bytes32,bytes32,uint256,bytes32,uint256,bytes32)',
+        'tuple(bytes32,uint256,bytes32,bytes32,bytes32,uint256,uint256,uint256)'
+      ],
+      [paymentDetailsTuple, intentSnapshotTuple]
+    );
+
+    const dataHash = typedData.dataHash || ethers.utils.keccak256(dataPayload);
+    const releaseAmount = typedData.releaseAmount;
+    if (releaseAmount === undefined || releaseAmount === null) {
+      throw new Error('Attestation typedData missing releaseAmount');
+    }
+
+    // PaymentAttestation tuple: (intentHash, releaseAmount, dataHash, signatures, data, metadata)
+    const paymentAttestationTuple = [
+      intentHashHex,
+      ethers.BigNumber.from(releaseAmount),
+      dataHash,
+      signaturesArray,
+      dataPayload,
+      typedData.metadata || '0x',
+    ];
+
+    return abiCoder.encode(
+      ['tuple(bytes32,uint256,bytes32,bytes[],bytes,bytes)'],
       [paymentAttestationTuple]
     );
-    
-    console.log('Encoding PaymentAttestation with structure:', {
-      paymentMethod: typedData.paymentMethod,
-      providerHash: typedData.providerHash,
-      intentHash: typedData.intentHash,
-      paymentDetails: {
-        recipientId: typedData.recipientId,
-        amount: typedData.amount,
-        timestamp: typedData.timestamp,
-        paymentId: typedData.paymentId,
-        currency: typedData.currency
-      },
-      signatures: signaturesArray,
-      dataHash: typedData.dataHash
-    });
-    
-    return encodedData;
   };
 
   // Function to generate calldata for verifyPayment
@@ -394,35 +484,13 @@ const Home: React.FC = () => {
         throw new Error('Please generate a zkTLS proof first');
       }
       
-      if (!calldataInputs.depositToken || !ethers.utils.isAddress(calldataInputs.depositToken)) {
-        throw new Error('Invalid deposit token address');
-      }
-      
-      if (!calldataInputs.intentAmount || calldataInputs.intentAmount === '0') {
-        throw new Error('Invalid intent amount');
-      }
-      
-      if (!calldataInputs.intentTimestamp) {
-        throw new Error('Invalid intent timestamp');
-      }
-      
-      if (!calldataInputs.payeeDetails || !calldataInputs.payeeDetails.startsWith('0x')) {
-        throw new Error('Payee details must be a bytes32 hash starting with 0x');
-      }
-      
-      if (!calldataInputs.fiatCurrency || !calldataInputs.fiatCurrency.startsWith('0x')) {
-        throw new Error('Fiat currency must be a bytes32 hash starting with 0x');
-      }
-      
-      if (!calldataInputs.conversionRate || calldataInputs.conversionRate === '0') {
-        throw new Error('Invalid conversion rate');
-      }
       
       // Parse attestation response
       const parsedAttestation = JSON.parse(attestationResponse);
       
-      // Validate that the response has the expected structure
-      if (!parsedAttestation.responseObject || !parsedAttestation.responseObject.typedDataValue) {
+      // Validate that the response has the expected structure (supports typedDataValue or typedData)
+      const respObj = parsedAttestation.responseObject || parsedAttestation;
+      if (!respObj.typedDataValue && !respObj.typedData) {
         throw new Error('Invalid attestation response structure');
       }
       
@@ -440,25 +508,25 @@ const Home: React.FC = () => {
         ['address'],
         [attestorAddress]
       );
-      
+
       // Encode PaymentAttestation as bytes using the full response
       const encodedPaymentProof = encodePaymentAttestation(parsedAttestation);
       
       // Create ethers Interface using the unifiedVerifierAbi
       const verifierInterface = new ethers.utils.Interface(unifiedVerifierAbi);
       
-      // Create VerifyPaymentData struct for the function call
+      // Normalize intentHash to bytes32 (supports decimal input)
+      const intentHashInput = (intentHash || '').trim();
+      const intentHashHex = intentHashInput.startsWith('0x')
+        ? ethers.utils.hexZeroPad(intentHashInput, 32)
+        : ethers.utils.hexZeroPad(ethers.BigNumber.from(intentHashInput).toHexString(), 32);
+
+      // Create VerifyPaymentData struct for the new contract interface
       const verifyPaymentData = {
+        intentHash: intentHashHex,
         paymentProof: encodedPaymentProof,
-        depositToken: calldataInputs.depositToken,
-        intentAmount: ethers.BigNumber.from(calldataInputs.intentAmount),
-        intentTimestamp: ethers.BigNumber.from(calldataInputs.intentTimestamp),
-        payeeDetails: calldataInputs.payeeDetails,
-        fiatCurrency: calldataInputs.fiatCurrency,
-        conversionRate: ethers.BigNumber.from(calldataInputs.conversionRate),
-        depositData: calldataInputs.depositData || '0x0000000000000000000000000000000000000000000000000000000000000000',
-        data: attestationData // Use the encoded attestorAddress
-      };
+        data: attestationData
+      } as const;
       
       // Use the Interface to encode the function call
       const calldata = verifierInterface.encodeFunctionData('verifyPayment', [verifyPaymentData]);
@@ -471,7 +539,7 @@ const Home: React.FC = () => {
   };
 
   const handleCalldataInputChange = (field: string, value: string) => {
-    setCalldataInputs(prev => ({
+    setCalldataInputs((prev: typeof DEFAULT_CALLDATA_INPUTS) => ({
       ...prev,
       [field]: value
     }));
@@ -688,12 +756,15 @@ const Home: React.FC = () => {
           </Section>
         </ProofPanel>
 
-        <AttestationPanel>
-          <Section>
+        </AppContainer>
+
+        <CalldataSection>
+          <CalldataContent>
             <StepIndicator>
               <StepNumber>4</StepNumber>
-              <StepLabel>Verify zkTLS Proof</StepLabel>
+              <StepLabel>Verify zkTLS Proof & Generate Calldata</StepLabel>
             </StepIndicator>
+
             <StatusItem>
               <StatusLabel>Attestation Service</StatusLabel>
             </StatusItem>
@@ -727,19 +798,93 @@ const Home: React.FC = () => {
                     value={verifyingContract}
                     onChange={(e) => setVerifyingContract(e.target.value)}
                     valueFontSize="12px"
-                    placeholder="0x09618E223f22652e3d83B98614A745D12A7ae991"
+                    placeholder="0xA22aE87e99d614e6e04d787c67C609E24F223F6C"
                     readOnly={attestationLoading}
                   />
+                  <StatusItem>
+                    <StatusLabel>VerifyPayment Calldata</StatusLabel>
+                  </StatusItem>
+                  <CalldataInputsContainer>
+                    <CalldataInputsGrid>
+                      <Input
+                        label="Deposit Token Address"
+                        name="depositToken"
+                        value={calldataInputs.depositToken}
+                        onChange={(e) => handleCalldataInputChange('depositToken', e.target.value)}
+                        valueFontSize="14px"
+                        placeholder="0x..."
+                      />
+                      <Input
+                        label="Intent Amount"
+                        name="intentAmount"
+                        value={calldataInputs.intentAmount}
+                        onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
+                        valueFontSize="14px"
+                        placeholder="Amount in wei"
+                      />
+                      <Input
+                        label="Intent Timestamp"
+                        name="intentTimestamp"
+                        value={calldataInputs.intentTimestamp}
+                        onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
+                        valueFontSize="14px"
+                        placeholder="Unix timestamp"
+                      />
+                      <Input
+                        label="Payee Details (bytes32)"
+                        name="payeeDetails"
+                        value={calldataInputs.payeeDetails}
+                        onChange={(e) => handleCalldataInputChange('payeeDetails', e.target.value)}
+                        valueFontSize="14px"
+                        placeholder="0x... (32 bytes hash)"
+                      />
+                      <Input
+                        label="Fiat Currency (bytes32)"
+                        name="fiatCurrency"
+                        value={calldataInputs.fiatCurrency}
+                        onChange={(e) => handleCalldataInputChange('fiatCurrency', e.target.value)}
+                        valueFontSize="14px"
+                        placeholder="0x... (32 bytes hash)"
+                      />
+                      <Input
+                        label="Conversion Rate"
+                        name="conversionRate"
+                        value={calldataInputs.conversionRate}
+                        onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
+                        valueFontSize="14px"
+                        placeholder="Rate in wei"
+                      />
+                      <Input
+                        label="Deposit Data (bytes)"
+                        name="depositData"
+                        value={calldataInputs.depositData}
+                        onChange={(e) => handleCalldataInputChange('depositData', e.target.value)}
+                        valueFontSize="14px"
+                        placeholder="32 bytes (default: 0x000...000)"
+                      />
+                    </CalldataInputsGrid>
+                  </CalldataInputsContainer>
+
                   <ButtonContainer>
-                    <Button
-                      onClick={handleSendToAttestation}
-                      disabled={attestationLoading}
-                      loading={attestationLoading}
-                      height={48}
-                      width={216}
-                    >
-                      Verify Proof
-                    </Button>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <Button
+                        onClick={handleSendToAttestation}
+                        disabled={attestationLoading}
+                        loading={attestationLoading}
+                        height={48}
+                        width={216}
+                      >
+                        Verify Proof
+                      </Button>
+                      <Button
+                        onClick={handleGenerateCalldata}
+                        height={48}
+                        width={216}
+                        disabled={!attestationResponse}
+                      >
+                        Generate Calldata
+                      </Button>
+                    </div>
                   </ButtonContainer>
                 </AttestationControls>
                 {attestationResponse && (
@@ -763,113 +908,30 @@ const Home: React.FC = () => {
                 </EmptyStateMessage>
               </EmptyStateContainer>
             )}
-          </Section>
-        </AttestationPanel>
-        </AppContainer>
-        
-        <CalldataSection>
-          <CalldataContent>
-            <StepIndicator>
-              <StepNumber>5</StepNumber>
-              <StepLabel>Generate Calldata</StepLabel>
-            </StepIndicator>
-            <StatusItem>
-              <StatusLabel>VerifyPayment Calldata</StatusLabel>
-            </StatusItem>
+
+            
+
             {attestationResponse ? (
-              <CalldataWrapper>
-                <CalldataInputsContainer>
-                  <CalldataInputsGrid>
-                    <Input
-                      label="Deposit Token Address"
-                      name="depositToken"
-                      value={calldataInputs.depositToken}
-                      onChange={(e) => handleCalldataInputChange('depositToken', e.target.value)}
-                      valueFontSize="14px"
-                      placeholder="0x..."
+              <CalldataOutputContainer>
+                {calldataError && (
+                  <CalldataErrorMessage>
+                    ❌ Error: {calldataError}
+                  </CalldataErrorMessage>
+                )}
+
+                {generatedCalldata && (
+                  <>
+                    <ThemedText.BodySecondary>
+                      ✅ Calldata generated successfully:
+                    </ThemedText.BodySecondary>
+                    <CalldataTextArea
+                      readOnly
+                      value={generatedCalldata}
+                      placeholder="Generated calldata will appear here"
                     />
-                    <Input
-                      label="Intent Amount"
-                      name="intentAmount"
-                      value={calldataInputs.intentAmount}
-                      onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
-                      valueFontSize="14px"
-                      placeholder="Amount in wei"
-                    />
-                    <Input
-                      label="Intent Timestamp"
-                      name="intentTimestamp"
-                      value={calldataInputs.intentTimestamp}
-                      onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
-                      valueFontSize="14px"
-                      placeholder="Unix timestamp"
-                    />
-                    <Input
-                      label="Payee Details (bytes32)"
-                      name="payeeDetails"
-                      value={calldataInputs.payeeDetails}
-                      onChange={(e) => handleCalldataInputChange('payeeDetails', e.target.value)}
-                      valueFontSize="14px"
-                      placeholder="0x... (32 bytes hash)"
-                    />
-                    <Input
-                      label="Fiat Currency (bytes32)"
-                      name="fiatCurrency"
-                      value={calldataInputs.fiatCurrency}
-                      onChange={(e) => handleCalldataInputChange('fiatCurrency', e.target.value)}
-                      valueFontSize="14px"
-                      placeholder="0x... (32 bytes hash)"
-                    />
-                    <Input
-                      label="Conversion Rate"
-                      name="conversionRate"
-                      value={calldataInputs.conversionRate}
-                      onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
-                      valueFontSize="14px"
-                      placeholder="Rate in wei"
-                    />
-                    <Input
-                      label="Deposit Data (bytes)"
-                      name="depositData"
-                      value={calldataInputs.depositData}
-                      onChange={(e) => handleCalldataInputChange('depositData', e.target.value)}
-                      valueFontSize="14px"
-                      placeholder="32 bytes (default: 0x000...000)"
-                    />
-                  </CalldataInputsGrid>
-                </CalldataInputsContainer>
-                
-                <CalldataOutputContainer>
-                  <ButtonContainer>
-                    <Button
-                      onClick={handleGenerateCalldata}
-                      height={48}
-                      width={216}
-                    >
-                      Generate Calldata
-                    </Button>
-                  </ButtonContainer>
-                  
-                  {calldataError && (
-                    <CalldataErrorMessage>
-                      ❌ Error: {calldataError}
-                    </CalldataErrorMessage>
-                  )}
-                  
-                  {generatedCalldata && (
-                    <>
-                      <ThemedText.BodySecondary>
-                        ✅ Calldata generated successfully:
-                      </ThemedText.BodySecondary>
-                      <CalldataTextArea 
-                        readOnly 
-                        value={generatedCalldata}
-                        placeholder="Generated calldata will appear here"
-                      />
-                    </>
-                  )}
-                </CalldataOutputContainer>
-              </CalldataWrapper>
+                  </>
+                )}
+              </CalldataOutputContainer>
             ) : (
               <EmptyStateContainer>
                 <EmptyStateMessage>
@@ -892,15 +954,17 @@ const PageWrapper = styled.div`
   padding: 1rem;
   width: 100%;
   max-width: 100vw;
-  height: 100vh;
+  height: auto;
+  min-height: 100vh;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: visible;
   box-sizing: border-box;
   
   /* Tablet view - allow vertical scrolling */
   @media (max-width: 1400px) and (min-width: 769px) {
-    height: 100vh;
-    overflow: auto;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
   }
   
   @media (max-width: 768px) {
@@ -927,13 +991,13 @@ const MainContent = styled.div`
 
 const AppContainer = styled.div`
   display: grid;
-  grid-template-columns: minmax(280px, 300px) minmax(320px, 350px) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
-  height: 85vh;
-  max-height: 700px;
+  height: auto;
+  max-height: none;
   border-radius: 8px;
   border: 1px solid ${colors.defaultBorderColor};
-  overflow: hidden;
+  overflow: visible;
   background: ${colors.container};
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   box-sizing: border-box;
@@ -941,13 +1005,12 @@ const AppContainer = styled.div`
   /* Tablet view (landscape) - 2x2 grid with scrollable container */
   @media (max-width: 1400px) and (min-width: 769px) {
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 450px 450px; /* Fixed heights for each row */
+    grid-auto-rows: minmax(320px, auto);
     row-gap: 0;
     column-gap: 0;
-    height: 90vh; /* Fixed viewport height */
-    max-height: 90vh;
-    overflow-y: auto; /* Enable vertical scrolling on the container */
-    overflow-x: hidden;
+    height: auto;
+    max-height: none;
+    overflow: visible;
     padding: 0;
     
     /* Custom scrollbar for the container */
@@ -983,9 +1046,9 @@ const AppContainer = styled.div`
 
 const LeftPanel = styled.div`
   padding: 15px;
-  overflow: hidden;
+  overflow: visible;
   border-right: 1px solid ${colors.defaultBorderColor};
-  height: 100%;
+  height: auto;
   display: flex;
   flex-direction: column;
   
@@ -993,9 +1056,9 @@ const LeftPanel = styled.div`
   @media (max-width: 1400px) and (min-width: 769px) {
     border-right: 1px solid ${colors.defaultBorderColor};
     border-bottom: 1px solid ${colors.defaultBorderColor};
-    height: 100%; /* Fill the grid cell */
+    height: auto; /* Let content size the cell */
     min-height: 0; /* Allow proper sizing within grid */
-    overflow-y: auto;
+    overflow: visible;
   }
   
   /* Mobile view */
@@ -1008,9 +1071,9 @@ const LeftPanel = styled.div`
 
 const MiddlePanel = styled.div`
   padding: 15px;
-  overflow: hidden;
+  overflow: visible;
   border-right: 1px solid ${colors.defaultBorderColor};
-  height: 100%;
+  height: auto;
   display: flex;
   flex-direction: column;
   
@@ -1018,9 +1081,9 @@ const MiddlePanel = styled.div`
   @media (max-width: 1400px) and (min-width: 769px) {
     border-right: none;
     border-bottom: 1px solid ${colors.defaultBorderColor};
-    height: 100%; /* Fill the grid cell */
+    height: auto; /* Let content size the cell */
     min-height: 0; /* Allow proper sizing within grid */
-    overflow-y: auto;
+    overflow: visible;
   }
   
   /* Mobile view */
@@ -1033,9 +1096,9 @@ const MiddlePanel = styled.div`
 
 const ProofPanel = styled.div`
   padding: 15px;
-  overflow: hidden;
-  border-right: 1px solid ${colors.defaultBorderColor};
-  height: 100%;
+  overflow: visible;
+  border-right: none;
+  height: auto;
   display: flex;
   flex-direction: column;
   
@@ -1043,9 +1106,9 @@ const ProofPanel = styled.div`
   @media (max-width: 1400px) and (min-width: 769px) {
     border-right: 1px solid ${colors.defaultBorderColor};
     border-bottom: none;
-    height: 100%; /* Fill the grid cell */
+    height: auto; /* Let content size the cell */
     min-height: 0; /* Allow proper sizing within grid */
-    overflow-y: auto;
+    overflow: visible;
   }
   
   /* Mobile view */
@@ -1062,12 +1125,11 @@ const Section = styled.div`
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%;
+  height: auto;
   min-height: 0;
   min-width: 0;
   width: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
   
   /* Custom scrollbar for internal content */
   scrollbar-width: thin;
@@ -1119,8 +1181,8 @@ const ButtonContainer = styled.div`
 `;
 
 const MetadataList = styled.div`
-  max-height: calc(100vh - 200px);
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1183,8 +1245,8 @@ const ProofContainer = styled.div`
 const ProofTextArea = styled.textarea`
   width: 100%;
   flex: 1;
-  min-height: 300px;
-  max-height: calc(100vh - 250px);
+  min-height: 260px;
+  max-height: 440px;
   margin-top: 10px;
   padding: 10px;
   border: 1px solid ${colors.defaultBorderColor};
@@ -1315,29 +1377,7 @@ const AdvancedContent = styled.div`
   border-top: 1px solid ${colors.defaultBorderColor};
 `;
 
-const AttestationPanel = styled.div`
-  padding: 15px;
-  overflow: hidden;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  
-  /* Tablet view (landscape) - 2x2 grid */
-  @media (max-width: 1400px) and (min-width: 769px) {
-    border-right: none;
-    border-bottom: none;
-    height: 100%; /* Fill the grid cell */
-    min-height: 0; /* Allow proper sizing within grid */
-    overflow-y: auto;
-  }
-  
-  /* Mobile view */
-  @media (max-width: 768px) {
-    border-bottom: none;
-    height: auto;
-  }
-`;
+// (AttestationPanel removed after consolidating Step 4 and Step 5)
 
 const AttestationContainer = styled.div`
   display: flex;
