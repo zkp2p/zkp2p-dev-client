@@ -777,7 +777,7 @@ const Home: React.FC = () => {
                     value={attestationBaseUrl}
                     onChange={(e) => setAttestationBaseUrl(e.target.value)}
                     valueFontSize="14px"
-                    placeholder="http://localhost:8080"
+                    placeholder="https://attestation-service-staging.zkp2p.xyz"
                     readOnly={attestationLoading}
                   />
                   <StyledInputContainer>
