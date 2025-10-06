@@ -329,10 +329,10 @@ const Home: React.FC = () => {
 
       const payload = {
         proofType: 'reclaim',
-        proof: {
+        proof: JSON.stringify({
           claim: proofClaim,
           signatures: proofData.proof?.signatures || proofData.signatures || {},
-        },
+        }),
         chainId: chainId,
         verifyingContract: verifyingContract,
         intent: {
@@ -777,7 +777,7 @@ const Home: React.FC = () => {
                     value={attestationBaseUrl}
                     onChange={(e) => setAttestationBaseUrl(e.target.value)}
                     valueFontSize="14px"
-                    placeholder="https://attestation-service-staging.zkp2p.xyz"
+                    placeholder="http://localhost:8080"
                     readOnly={attestationLoading}
                   />
                   <StyledInputContainer>
