@@ -20,6 +20,16 @@ const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-ext
 const PROOF_FETCH_INTERVAL = 3000;
 const PROOF_GENERATION_TIMEOUT = 60000;
 
+// Default calldata inputs stored at module scope (strict, visible defaults)
+const DEFAULT_CALLDATA_INPUTS = {
+  intentAmount: '0',
+  intentTimestamp: '0',
+  payeeDetails:
+    '0x0000000000000000000000000000000000000000000000000000000000000000',
+  fiatCurrency: keccak256('USD'),
+  conversionRate: '0',
+};
+
 // Step indicator component
 const StepIndicator = styled.div`
   display: flex;
@@ -99,46 +109,11 @@ const Home: React.FC = () => {
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Calldata generation state
-  const DEFAULT_CALLDATA_INPUTS = {
-    depositToken: '',
-    intentAmount: '',
-    intentTimestamp: '',
-    payeeDetails: '',
-    fiatCurrency: '',
-    conversionRate: '',
-    depositData: '0x0000000000000000000000000000000000000000000000000000000000000000'
-  };
-
-  const CALLDATA_LS_PREFIX = 'verifyPaymentCalldata:';
-
-  const [calldataInputs, setCalldataInputs] = useState(() => {
-    try {
-      const saved = localStorage.getItem(`${CALLDATA_LS_PREFIX}${intentHash}`);
-      return saved ? JSON.parse(saved) : DEFAULT_CALLDATA_INPUTS;
-    } catch {
-      return DEFAULT_CALLDATA_INPUTS;
-    }
-  });
+  const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
   const [generatedCalldata, setGeneratedCalldata] = useState<string>('');
   const [calldataError, setCalldataError] = useState<string | null>(null);
 
-  // Persist calldata inputs per-intent
-  useEffect(() => {
-    try {
-      localStorage.setItem(`${CALLDATA_LS_PREFIX}${intentHash}`, JSON.stringify(calldataInputs));
-    } catch {}
-  }, [calldataInputs, intentHash]);
-
-  // Load saved calldata inputs when intentHash changes
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(`${CALLDATA_LS_PREFIX}${intentHash}`);
-      setCalldataInputs(saved ? JSON.parse(saved) : DEFAULT_CALLDATA_INPUTS);
-    } catch {
-      setCalldataInputs(DEFAULT_CALLDATA_INPUTS);
-    }
-  }, [intentHash]);
+  // No localStorage persistence; inputs always reflect actual defaults or user edits
 
   const {
     isSidebarInstalled,
@@ -312,15 +287,13 @@ const Home: React.FC = () => {
       }
 
       // Derive intent fields from existing inputs
-      const amount = calldataInputs.intentAmount || '0';
-      const timestampSec = calldataInputs.intentTimestamp
-        ? ethers.BigNumber.from(calldataInputs.intentTimestamp)
-        : ethers.BigNumber.from(0);
+      const amount = calldataInputs.intentAmount;
+      const timestampSec = ethers.BigNumber.from(calldataInputs.intentTimestamp);
       const timestampMs = timestampSec.mul(1000).toString();
       const paymentMethod = keccak256(paymentPlatform);
-      const fiatCurrency = calldataInputs.fiatCurrency || keccak256('USD');
-      const conversionRate = calldataInputs.conversionRate || '0';
-      const payeeDetails = calldataInputs.payeeDetails || '0x0000000000000000000000000000000000000000000000000000000000000000';
+      const fiatCurrency = calldataInputs.fiatCurrency;
+      const conversionRate = calldataInputs.conversionRate;
+      const payeeDetails = calldataInputs.payeeDetails;
       // Normalize intentHash to bytes32 hex (support decimal input)
       const intentHashInput = (intentHash || '').trim();
       const intentHashHex = intentHashInput.startsWith('0x')
@@ -381,156 +354,61 @@ const Home: React.FC = () => {
   const addToBrowserText = () =>
     browserName === 'Brave' ? 'Add to Brave' : 'Add to Chrome';
 
-  // Helper function to encode PaymentAttestation struct (updated for new contract)
+  // Helper: strict encoding of PaymentAttestation (no fallbacks)
   const encodePaymentAttestation = (attestationResponse: any) => {
-    const abiCoder = new ethers.utils.AbiCoder();
+    const abi = new ethers.utils.AbiCoder();
+    const resp = attestationResponse.responseObject;
+    const td = resp.typedDataValue;
 
-    const respObj = attestationResponse.responseObject || attestationResponse;
-    const typedData = respObj.typedDataValue || respObj.typedData || {};
+    const intentHash: string = td.intentHash;
+    const releaseAmount = ethers.BigNumber.from(td.releaseAmount);
+    const dataHash: string = td.dataHash;
+    const signatures: string[] = [resp.signature];
+    const encodedPaymentDetails: string = resp.encodedPaymentDetails;
 
-    // signatures may be a single string or an array
-    const signaturesArray: string[] = Array.isArray(respObj.signatures)
-      ? respObj.signatures
-      : (respObj.signature ? [respObj.signature] : []);
-
-    // Helpers
-    const ZERO32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
-    const toBytes32 = (v?: any, fallback?: string) => {
-      try {
-        if (!v || v === '0x') return fallback || ZERO32;
-        if (ethers.utils.isHexString(v)) return ethers.utils.hexZeroPad(v, 32);
-        // if decimal-like string
-        if (typeof v === 'string' && /^\d+$/.test(v)) {
-          return ethers.utils.hexZeroPad(ethers.BigNumber.from(v).toHexString(), 32);
-        }
-        // hash arbitrary string to bytes32
-        if (typeof v === 'string') return keccak256(v);
-      } catch {}
-      return fallback || ZERO32;
-    };
-
-    // Normalize values from response/state
-    const method = toBytes32(typedData.method || typedData.paymentMethod || keccak256(paymentPlatform));
-    const currency = toBytes32(typedData.currency || calldataInputs.fiatCurrency || keccak256('USD'));
-
-    // PaymentDetails tuple: (method, payeeId, amount, currency, timestamp, paymentId)
-    const paymentDetailsTuple = [
-      method,                                                     // bytes32 method
-      toBytes32(typedData.payeeId || typedData.recipientId, toBytes32(calldataInputs.payeeDetails)), // bytes32 payeeId
-      ethers.BigNumber.from(typedData.amount || 0),               // uint256 amount (cents)
-      currency,                                                   // bytes32 currency
-      ethers.BigNumber.from(typedData.timestamp || 0),            // uint256 timestamp (ms)
-      toBytes32(typedData.paymentId),                             // bytes32 paymentId
-    ];
-
-    // IntentSnapshot tuple
-    const intentHashInput = (typedData.intentHash || intentHash || '').trim();
-    const intentHashHex = toBytes32(intentHashInput);
-
-    const intentSnapshotTuple = [
-      intentHashHex,                                              // bytes32 intentHash
-      ethers.BigNumber.from(calldataInputs.intentAmount || '0'),  // uint256 amount (tokens)
-      method,                                                     // bytes32 paymentMethod
-      toBytes32(calldataInputs.fiatCurrency, currency),           // bytes32 fiatCurrency
-      toBytes32(calldataInputs.payeeDetails),                     // bytes32 payeeDetails
-      ethers.BigNumber.from(calldataInputs.conversionRate || '0'),// uint256 conversionRate
-      ethers.BigNumber.from(calldataInputs.intentTimestamp || '0'),// uint256 signalTimestamp (sec)
-      ethers.BigNumber.from('10000000'),                          // uint256 timestampBuffer (ms)
-    ];
-
-    // Encode payload data and compute hash (or use provided dataHash)
-    const dataPayload = abiCoder.encode(
-      [
-        'tuple(bytes32,bytes32,uint256,bytes32,uint256,bytes32)',
-        'tuple(bytes32,uint256,bytes32,bytes32,bytes32,uint256,uint256,uint256)'
-      ],
-      [paymentDetailsTuple, intentSnapshotTuple]
-    );
-
-    const dataHash = typedData.dataHash || ethers.utils.keccak256(dataPayload);
-    const releaseAmount = typedData.releaseAmount;
-    if (releaseAmount === undefined || releaseAmount === null) {
-      throw new Error('Attestation typedData missing releaseAmount');
+    if (!intentHash || !releaseAmount || !dataHash || !encodedPaymentDetails) {
+      throw new Error('Attestation response missing required fields');
     }
 
-    // PaymentAttestation tuple: (intentHash, releaseAmount, dataHash, signatures, data, metadata)
-    const paymentAttestationTuple = [
-      intentHashHex,
-      ethers.BigNumber.from(releaseAmount),
-      dataHash,
-      signaturesArray,
-      dataPayload,
-      typedData.metadata || '0x',
-    ];
-
-    return abiCoder.encode(
+    return abi.encode(
       ['tuple(bytes32,uint256,bytes32,bytes[],bytes,bytes)'],
-      [paymentAttestationTuple]
+      [[intentHash, releaseAmount, dataHash, signatures, encodedPaymentDetails, '0x']]
     );
   };
 
-  // Function to generate calldata for verifyPayment
+  // Function to generate calldata for verifyPayment (strict, no fallbacks)
   const handleGenerateCalldata = () => {
     try {
       setCalldataError(null);
       setGeneratedCalldata('');
       
       // Validate required inputs
-      if (!attestationResponse) {
-        throw new Error('Please generate an attestation first');
-      }
-      
-      if (!resultProof) {
-        throw new Error('Please generate a zkTLS proof first');
-      }
-      
-      
-      // Parse attestation response
+      if (!attestationResponse) throw new Error('Please generate an attestation first');
+
+      // Parse attestation response (strict fields only)
       const parsedAttestation = JSON.parse(attestationResponse);
-      
-      // Validate that the response has the expected structure (supports typedDataValue or typedData)
-      const respObj = parsedAttestation.responseObject || parsedAttestation;
-      if (!respObj.typedDataValue && !respObj.typedData) {
-        throw new Error('Invalid attestation response structure');
-      }
-      
-      // Parse the zkTLS proof to extract attestorAddress
-      const zkTlsProof = JSON.parse(resultProof);
-      if (!zkTlsProof.proof?.signatures?.attestorAddress) {
-        throw new Error('Attestor address not found in zkTLS proof');
-      }
-      
-      const attestorAddress = zkTlsProof.proof.signatures.attestorAddress;
-      
-      // Encode the attestorAddress as bytes for the data field
-      // This matches the contract's expected format for attestation data
-      const attestationData = ethers.utils.defaultAbiCoder.encode(
-        ['address'],
-        [attestorAddress]
-      );
+      const respObj = parsedAttestation.responseObject;
+      const td = respObj.typedDataValue;
 
-      // Encode PaymentAttestation as bytes using the full response
+      const attestorAddress = respObj.signer;
+      const attestationData = ethers.utils.defaultAbiCoder.encode(['address'], [attestorAddress]);
+
+      // Encode PaymentAttestation as bytes using the strict encoder
       const encodedPaymentProof = encodePaymentAttestation(parsedAttestation);
-      
-      // Create ethers Interface using the unifiedVerifierAbi
-      const verifierInterface = new ethers.utils.Interface(unifiedVerifierAbi);
-      
-      // Normalize intentHash to bytes32 (supports decimal input)
-      const intentHashInput = (intentHash || '').trim();
-      const intentHashHex = intentHashInput.startsWith('0x')
-        ? ethers.utils.hexZeroPad(intentHashInput, 32)
-        : ethers.utils.hexZeroPad(ethers.BigNumber.from(intentHashInput).toHexString(), 32);
 
-      // Create VerifyPaymentData struct for the new contract interface
+      // Intent hash comes from typedDataValue
+      const intentHashHex = td.intentHash;
+
+      // Create VerifyPaymentData struct for the verifier
       const verifyPaymentData = {
         intentHash: intentHashHex,
         paymentProof: encodedPaymentProof,
-        data: attestationData
+        data: attestationData,
       } as const;
-      
-      // Use the Interface to encode the function call
+
+      const verifierInterface = new ethers.utils.Interface(unifiedVerifierAbi);
       const calldata = verifierInterface.encodeFunctionData('verifyPayment', [verifyPaymentData]);
-      
+
       setGeneratedCalldata(calldata);
     } catch (error) {
       console.error('Error generating calldata:', error);
@@ -807,14 +685,6 @@ const Home: React.FC = () => {
                   <CalldataInputsContainer>
                     <CalldataInputsGrid>
                       <Input
-                        label="Deposit Token Address"
-                        name="depositToken"
-                        value={calldataInputs.depositToken}
-                        onChange={(e) => handleCalldataInputChange('depositToken', e.target.value)}
-                        valueFontSize="14px"
-                        placeholder="0x..."
-                      />
-                      <Input
                         label="Intent Amount"
                         name="intentAmount"
                         value={calldataInputs.intentAmount}
@@ -853,14 +723,6 @@ const Home: React.FC = () => {
                         onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
                         valueFontSize="14px"
                         placeholder="Rate in wei"
-                      />
-                      <Input
-                        label="Deposit Data (bytes)"
-                        name="depositData"
-                        value={calldataInputs.depositData}
-                        onChange={(e) => handleCalldataInputChange('depositData', e.target.value)}
-                        valueFontSize="14px"
-                        placeholder="32 bytes (default: 0x000...000)"
                       />
                     </CalldataInputsGrid>
                   </CalldataInputsContainer>
@@ -1532,19 +1394,7 @@ const CalldataContent = styled.div`
   gap: 15px;
 `;
 
-const CalldataWrapper = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  width: 100%;
-  min-height: fit-content;
-  
-  @media (max-width: 1200px) {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-    gap: 15px;
-  }
-`;
+
 
 const CalldataInputsContainer = styled.div`
   display: flex;
