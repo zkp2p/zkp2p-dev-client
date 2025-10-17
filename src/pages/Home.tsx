@@ -98,7 +98,7 @@ const Home: React.FC = () => {
   });
   const [verifyingContract, setVerifyingContract] = useState<string>(() => {
     const stored = localStorage.getItem('verifyingContract');
-    return stored || '0xA22aE87e99d614e6e04d787c67C609E24F223F6C';
+    return stored || '0xd646C10E4E227Fce8D71C1f147a1Ab155c8048a8';
   });
   const [attestationBaseUrl, setAttestationBaseUrl] = useState<string>(() => {
     const stored = localStorage.getItem('attestationBaseUrl');
@@ -676,7 +676,7 @@ const Home: React.FC = () => {
                     value={verifyingContract}
                     onChange={(e) => setVerifyingContract(e.target.value)}
                     valueFontSize="12px"
-                    placeholder="0xA22aE87e99d614e6e04d787c67C609E24F223F6C"
+                    placeholder="0xd646C10E4E227Fce8D71C1f147a1Ab155c8048a8"
                     readOnly={attestationLoading}
                   />
                   <StatusItem>
