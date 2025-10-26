@@ -30,6 +30,13 @@ const DEFAULT_CALLDATA_INPUTS = {
   conversionRate: '0',
 };
 
+// Helper: derive platform (e.g., "venmo") from action type (e.g., "transfer_venmo").
+const derivePlatformFromActionType = (action: string, fallback: string) => {
+  if (!action) return fallback;
+  const parts = action.split('_');
+  return parts.length > 1 ? parts[parts.length - 1] : fallback;
+};
+
 // Step indicator component
 const StepIndicator = styled.div`
   display: flex;
@@ -73,12 +80,9 @@ const Home: React.FC = () => {
     return localStorage.getItem('paymentPlatform') || 'venmo';
   });
   const [metadataPlatform, setMetadataPlatform] = useState(() => {
-    const initialStoredPaymentPlatform = localStorage.getItem('paymentPlatform') || 'venmo';
-    const storedMetadataVal = localStorage.getItem('metadataPlatform');
-    if (storedMetadataVal === null) {
-      return initialStoredPaymentPlatform;
-    }
-    return storedMetadataVal;
+    const initialPaymentPlatform = localStorage.getItem('paymentPlatform') || 'venmo';
+    const initialActionType = localStorage.getItem('actionType') || 'transfer_venmo';
+    return derivePlatformFromActionType(initialActionType, initialPaymentPlatform);
   });
   const [proofIndex, setProofIndex] = useState<number>(0);
   const [isInstallClicked, setIsInstallClicked] = useState(false);
@@ -98,7 +102,7 @@ const Home: React.FC = () => {
   });
   const [verifyingContract, setVerifyingContract] = useState<string>(() => {
     const stored = localStorage.getItem('verifyingContract');
-    return stored || '0xd646C10E4E227Fce8D71C1f147a1Ab155c8048a8';
+    return stored || '0x16b3e4a3CA36D3A4bCA281767f15C7ADeF4ab163';
   });
   const [attestationBaseUrl, setAttestationBaseUrl] = useState<string>(() => {
     const stored = localStorage.getItem('attestationBaseUrl');
@@ -157,6 +161,12 @@ const Home: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('paymentPlatform', paymentPlatform);
   }, [paymentPlatform]);
+
+  // Keep metadata group aligned with action type or selected payment platform.
+  useEffect(() => {
+    const derived = derivePlatformFromActionType(actionType, paymentPlatform);
+    setMetadataPlatform((prev) => (prev !== derived ? derived : prev));
+  }, [actionType, paymentPlatform]);
 
 
   useEffect(() => {
@@ -228,7 +238,6 @@ const Home: React.FC = () => {
   const handleMetadataPlatformChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = event.target.value;
     setMetadataPlatform(newValue);
-    localStorage.setItem('metadataPlatform', newValue);
   };
 
   const handleOpenSettings = () => {
@@ -676,7 +685,7 @@ const Home: React.FC = () => {
                     value={verifyingContract}
                     onChange={(e) => setVerifyingContract(e.target.value)}
                     valueFontSize="12px"
-                    placeholder="0xd646C10E4E227Fce8D71C1f147a1Ab155c8048a8"
+                    placeholder="0x16b3e4a3CA36D3A4bCA281767f15C7ADeF4ab163"
                     readOnly={attestationLoading}
                   />
                   <StatusItem>
@@ -1043,11 +1052,14 @@ const ButtonContainer = styled.div`
 `;
 
 const MetadataList = styled.div`
-  max-height: none;
-  overflow-y: visible;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Keep the list from stretching the page; scroll within the panel */
+  max-height: min(520px, 60vh);
+  overflow-y: auto;
+  padding-right: 4px;
+  -webkit-overflow-scrolling: touch;
   
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
@@ -1063,6 +1075,10 @@ const MetadataList = styled.div`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    max-height: 45vh;
   }
 `;
 

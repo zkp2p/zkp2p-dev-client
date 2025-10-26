@@ -1,6 +1,6 @@
 import React, { ChangeEvent } from 'react';
 import styled from 'styled-components';
-import { Lock as LockIcon } from 'react-feather';
+// import { Lock as LockIcon } from 'react-feather';
 
 import QuestionHelper from '@components/common/QuestionHelper';
 import { colors } from '@theme/colors';
@@ -80,7 +80,11 @@ export const Input: React.FC<InputProps> = ({
             name={name}
             id={name}
             placeholder={placeholder}
-            value={value}
+            value={
+              (value === undefined || value === '') && placeholder
+                ? placeholder
+                : (value ?? '')
+            }
             onChange={onChange}
             onFocus={onFocus}
             onBlur={onBlur}
