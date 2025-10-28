@@ -1,0 +1,71 @@
+import { ethers } from 'ethers';
+import * as baseNet from '@zkp2p/contracts-v2/networks/base';
+import * as baseSepoliaNet from '@zkp2p/contracts-v2/networks/baseSepolia';
+import baseOrchestratorJson from '@zkp2p/contracts-v2/abis/base/Orchestrator.json';
+import baseSepoliaOrchestratorJson from '@zkp2p/contracts-v2/abis/baseSepolia/Orchestrator.json';
+
+export type ChainId = 84532 | 8453;
+
+export type IntentDetails = {
+  amount: string;
+  timestampSec: string;
+  paymentMethod: string; // bytes32
+  fiatCurrency: string;  // bytes32
+  conversionRate: string;
+  payeeDetails: string;  // bytes32
+};
+
+export const RPC_URL: Record<ChainId, string> = {
+  84532: 'https://sepolia.base.org',
+  8453: 'https://mainnet.base.org',
+};
+
+export function getDefaultVerifier(chainId: ChainId): string {
+  return chainId === 8453
+    ? baseNet.addresses.contracts.UnifiedPaymentVerifier
+    : baseSepoliaNet.addresses.contracts.UnifiedPaymentVerifier;
+}
+
+export function getOrchestratorAddress(chainId: ChainId): string {
+  return chainId === 8453
+    ? baseNet.addresses.contracts.Orchestrator
+    : baseSepoliaNet.addresses.contracts.Orchestrator;
+}
+
+export function getOrchestratorAbi(chainId: ChainId) {
+  return chainId === 8453 ? baseOrchestratorJson : baseSepoliaOrchestratorJson;
+}
+
+export async function fetchIntentDetails(
+  chainId: ChainId,
+  intentHashHex: string,
+): Promise<IntentDetails> {
+  const rpc = RPC_URL[chainId];
+  const provider = new ethers.providers.JsonRpcProvider(rpc, chainId);
+  const orchestratorAddr = getOrchestratorAddress(chainId);
+  const orchestratorAbi = getOrchestratorAbi(chainId);
+  const orchestrator = new ethers.Contract(orchestratorAddr, orchestratorAbi, provider);
+
+  const res = await orchestrator.getIntent(intentHashHex);
+
+  return {
+    amount: ethers.BigNumber.from(res.amount).toString(),
+    timestampSec: ethers.BigNumber.from(res.timestamp).toString(),
+    paymentMethod: res.paymentMethod,
+    fiatCurrency: res.fiatCurrency,
+    conversionRate: ethers.BigNumber.from(res.conversionRate).toString(),
+    payeeDetails: res.payeeId,
+  };
+}
+
+export function normalizeHex32(value: string): string {
+  const v = (value || '').trim();
+  const prefixed = v.startsWith('0x') ? v : `0x${v}`;
+  return ethers.utils.hexZeroPad(prefixed, 32);
+}
+
+export function hexToDecimal(value: string): string {
+  const v = (value || '').trim();
+  const prefixed = v.startsWith('0x') ? v : `0x${v}`;
+  return ethers.BigNumber.from(prefixed).toString();
+}

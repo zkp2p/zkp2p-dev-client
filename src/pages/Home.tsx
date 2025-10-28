@@ -15,6 +15,7 @@ import { ChevronRight } from 'react-feather';
 import { ethers } from 'ethers';
 import { unifiedVerifierAbi } from '../abis/UnifiedVerifierAbi';
 import { keccak256 } from '@helpers/keccack';
+import { getDefaultVerifier, fetchIntentDetails, normalizeHex32, hexToDecimal } from '@helpers/contracts';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 const PROOF_FETCH_INTERVAL = 3000;
@@ -71,7 +72,7 @@ const StepLabel = styled.div`
 
 const Home: React.FC = () => {
   const [intentHash, setIntentHash] = useState(() => {
-    return localStorage.getItem('intentHash') || '11114168264614898234767045087100892814911930784849242636571146569793237988689';
+    return localStorage.getItem('intentHash') || '0x';
   });
   const [actionType, setActionType] = useState(() => {
     return localStorage.getItem('actionType') || 'transfer_venmo';
@@ -102,7 +103,8 @@ const Home: React.FC = () => {
   });
   const [verifyingContract, setVerifyingContract] = useState<string>(() => {
     const stored = localStorage.getItem('verifyingContract');
-    return stored || '0x16b3e4a3CA36D3A4bCA281767f15C7ADeF4ab163';
+    const byChain = getDefaultVerifier(84532);
+    return stored || byChain;
   });
   const [attestationBaseUrl, setAttestationBaseUrl] = useState<string>(() => {
     const stored = localStorage.getItem('attestationBaseUrl');
@@ -114,8 +116,16 @@ const Home: React.FC = () => {
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
+  // Input changes no longer used (auto-fetched intent); keep for completeness
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [generatedCalldata, setGeneratedCalldata] = useState<string>('');
   const [calldataError, setCalldataError] = useState<string | null>(null);
+  // Step 4 independent intent hash for verification
+  const [verifyIntentHash, setVerifyIntentHash] = useState<string>('');
+  const [isIntentAdvancedOpen, setIsIntentAdvancedOpen] = useState(false);
+  const [fetchIntentLoading, setFetchIntentLoading] = useState(false);
+  const [fetchIntentError, setFetchIntentError] = useState<string | null>(null);
+  const [paymentMethodHex, setPaymentMethodHex] = useState<string>('');
 
   // No localStorage persistence; inputs always reflect actual defaults or user edits
 
@@ -151,7 +161,12 @@ const Home: React.FC = () => {
   }, [refetchExtensionVersion]);
 
   useEffect(() => {
-    localStorage.setItem('intentHash', intentHash);
+    try {
+      const hex = normalizeHex32(intentHash);
+      localStorage.setItem('intentHash', hex);
+    } catch {
+      localStorage.setItem('intentHash', intentHash);
+    }
   }, [intentHash]);
 
   useEffect(() => {
@@ -161,6 +176,14 @@ const Home: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('paymentPlatform', paymentPlatform);
   }, [paymentPlatform]);
+
+  // Auto-select verifier by chain (Base Sepolia / Base)
+  useEffect(() => {
+    if (chainId === 84532 || chainId === 8453) {
+      const next = getDefaultVerifier(chainId === 8453 ? 8453 : 84532);
+      setVerifyingContract(next);
+    }
+  }, [chainId]);
 
   // Keep metadata group aligned with action type or selected payment platform.
   useEffect(() => {
@@ -275,7 +298,9 @@ const Home: React.FC = () => {
     }
 
     resetProofState();
-    generatePaymentProof(metadataPlatform, intentHash, meta.originalIndex, proofIndex);
+    // Extension expects decimal intent hash; convert from hex
+    const intentForProof = hexToDecimal(intentHash);
+    generatePaymentProof(metadataPlatform, intentForProof, meta.originalIndex, proofIndex);
 
     setTriggerProofFetchPolling(true);
   };
@@ -295,19 +320,15 @@ const Home: React.FC = () => {
         throw new Error('No proof claim found in the generated proof');
       }
 
-      // Derive intent fields from existing inputs
+      // Normalize to bytes32 using Step 4 hash
+      const intentHashHex = normalizeHex32(verifyIntentHash);
       const amount = calldataInputs.intentAmount;
-      const timestampSec = ethers.BigNumber.from(calldataInputs.intentTimestamp);
+      const timestampSec = ethers.BigNumber.from(calldataInputs.intentTimestamp || '0');
       const timestampMs = timestampSec.mul(1000).toString();
-      const paymentMethod = keccak256(paymentPlatform);
+      const paymentMethod = paymentMethodHex || keccak256(paymentPlatform);
       const fiatCurrency = calldataInputs.fiatCurrency;
       const conversionRate = calldataInputs.conversionRate;
       const payeeDetails = calldataInputs.payeeDetails;
-      // Normalize intentHash to bytes32 hex (support decimal input)
-      const intentHashInput = (intentHash || '').trim();
-      const intentHashHex = intentHashInput.startsWith('0x')
-        ? ethers.utils.hexZeroPad(intentHashInput, 32)
-        : ethers.utils.hexZeroPad(ethers.BigNumber.from(intentHashInput).toHexString(), 32);
 
       const payload = {
         proofType: 'reclaim',
@@ -428,8 +449,36 @@ const Home: React.FC = () => {
   const handleCalldataInputChange = (field: string, value: string) => {
     setCalldataInputs((prev: typeof DEFAULT_CALLDATA_INPUTS) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
+  };
+
+  // Initialize Step 4 intent hash once from Step 1 on mount
+  useEffect(() => {
+    setVerifyIntentHash(intentHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFetchIntentFromChain = async () => {
+    try {
+      setFetchIntentError(null);
+      setFetchIntentLoading(true);
+      const netChain: 84532 | 8453 = chainId === 8453 ? 8453 : 84532;
+      const hex = normalizeHex32(verifyIntentHash);
+      const onchain = await fetchIntentDetails(netChain, hex);
+      setCalldataInputs({
+        intentAmount: onchain.amount,
+        intentTimestamp: onchain.timestampSec,
+        fiatCurrency: onchain.fiatCurrency,
+        conversionRate: onchain.conversionRate,
+        payeeDetails: onchain.payeeDetails || calldataInputs.payeeDetails,
+      });
+      setPaymentMethodHex(onchain.paymentMethod);
+    } catch (e: any) {
+      setFetchIntentError(e?.message || 'Failed to fetch intent from chain');
+    } finally {
+      setFetchIntentLoading(false);
+    }
   };
 
   return (
@@ -460,7 +509,16 @@ const Home: React.FC = () => {
               label="Intent Hash"
               name="intentHash"
               value={intentHash}
-              onChange={(e) => setIntentHash(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                // Allow empty, optional 0x, and hex digits (unprefixed ok)
+                if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) {
+                  setIntentHash(v);
+                }
+              }}
+              onBlur={() => {
+                try { setIntentHash((v) => normalizeHex32(v)); } catch {}
+              }}
               valueFontSize="16px"
             />
             <Input
@@ -643,21 +701,47 @@ const Home: React.FC = () => {
           </Section>
         </ProofPanel>
 
-        </AppContainer>
-
-        <CalldataSection>
-          <CalldataContent>
+        <VerifyPanel>
+          <Section>
             <StepIndicator>
               <StepNumber>4</StepNumber>
               <StepLabel>Verify zkTLS Proof & Generate Calldata</StepLabel>
             </StepIndicator>
 
-            <StatusItem>
-              <StatusLabel>Attestation Service</StatusLabel>
-            </StatusItem>
-            {proofStatus === 'success' ? (
-              <AttestationContainer>
-                <AttestationControls>
+            
+            <VerifyGrid>
+                <AttestationContainer>
+                  <AttestationControls>
+                    <StatusItem>
+                      <StatusLabel>Attestation Service</StatusLabel>
+                    </StatusItem>
+                    <StyledInputContainer>
+                      <StyledInputLabel>Intent Hash (for Verify)</StyledInputLabel>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                        <StyledSelect as="input"
+                          value={verifyIntentHash}
+                          onChange={(e: any) => {
+                            const v = e.target.value;
+                            if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) setVerifyIntentHash(v);
+                          }}
+                          onBlur={() => { try { setVerifyIntentHash((v) => normalizeHex32(v)); } catch {} }}
+                          style={{ flex: 1 }}
+                        />
+                        <AccessoryButton
+                          onClick={handleFetchIntentFromChain}
+                          loading={fetchIntentLoading}
+                          disabled={fetchIntentLoading}
+                          height={40}
+                          icon="chevronRight"
+                          title="Fetch Intent"
+                        />
+                      </div>
+                      {fetchIntentError && (
+                        <ThemedText.LabelSmall style={{ color: '#FF3B30', marginTop: 6 }}>
+                          {fetchIntentError}
+                        </ThemedText.LabelSmall>
+                      )}
+                    </StyledInputContainer>
                   <Input
                     label="Attestation Service URL"
                     name="attestationBaseUrl"
@@ -669,78 +753,98 @@ const Home: React.FC = () => {
                   />
                   <StyledInputContainer>
                     <StyledInputLabel>Chain</StyledInputLabel>
-                    <StyledSelect
-                      value={chainId}
-                      onChange={(e) => setChainId(parseInt(e.target.value))}
-                      disabled={attestationLoading}
-                    >
-                      <option value="84532">Base Sepolia (84532)</option>
-                      <option value="8453">Base (8453)</option>
-                      <option value="31337">Local (31337)</option>
-                    </StyledSelect>
+            <StyledSelect
+              value={chainId}
+              onChange={(e) => setChainId(parseInt(e.target.value))}
+              disabled={attestationLoading}
+            >
+              <option value="84532">Base Sepolia (84532)</option>
+              <option value="8453">Base (8453)</option>
+            </StyledSelect>
                   </StyledInputContainer>
-                  <Input
-                    label="Verifying Contract"
-                    name="verifyingContract"
-                    value={verifyingContract}
-                    onChange={(e) => setVerifyingContract(e.target.value)}
-                    valueFontSize="12px"
-                    placeholder="0x16b3e4a3CA36D3A4bCA281767f15C7ADeF4ab163"
-                    readOnly={attestationLoading}
-                  />
-                  <StatusItem>
-                    <StatusLabel>VerifyPayment Calldata</StatusLabel>
-                  </StatusItem>
-                  <CalldataInputsContainer>
-                    <CalldataInputsGrid>
-                      <Input
-                        label="Intent Amount"
-                        name="intentAmount"
-                        value={calldataInputs.intentAmount}
-                        onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
-                        valueFontSize="14px"
-                        placeholder="Amount in wei"
+                  {/* Verifying Contract moved to Advanced */}
+                  <AdvancedSection>
+                    <AdvancedHeader onClick={() => setIsIntentAdvancedOpen(!isIntentAdvancedOpen)}>
+                      <ThemedText.BodySmall>Intent Details (Advanced)</ThemedText.BodySmall>
+                      <ChevronRight 
+                        size={16} 
+                        style={{ 
+                          transform: isIntentAdvancedOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.2s ease'
+                        }} 
                       />
-                      <Input
-                        label="Intent Timestamp"
-                        name="intentTimestamp"
-                        value={calldataInputs.intentTimestamp}
-                        onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
-                        valueFontSize="14px"
-                        placeholder="Unix timestamp"
-                      />
-                      <Input
-                        label="Payee Details (bytes32)"
-                        name="payeeDetails"
-                        value={calldataInputs.payeeDetails}
-                        onChange={(e) => handleCalldataInputChange('payeeDetails', e.target.value)}
-                        valueFontSize="14px"
-                        placeholder="0x... (32 bytes hash)"
-                      />
-                      <Input
-                        label="Fiat Currency (bytes32)"
-                        name="fiatCurrency"
-                        value={calldataInputs.fiatCurrency}
-                        onChange={(e) => handleCalldataInputChange('fiatCurrency', e.target.value)}
-                        valueFontSize="14px"
-                        placeholder="0x... (32 bytes hash)"
-                      />
-                      <Input
-                        label="Conversion Rate"
-                        name="conversionRate"
-                        value={calldataInputs.conversionRate}
-                        onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
-                        valueFontSize="14px"
-                        placeholder="Rate in wei"
-                      />
-                    </CalldataInputsGrid>
-                  </CalldataInputsContainer>
+                    </AdvancedHeader>
+                    {isIntentAdvancedOpen && (
+                      <AdvancedContent>
+                        <CalldataInputsContainer>
+                          <CalldataInputsGrid>
+                            <Input
+                              label="Amount"
+                              name="intentAmount"
+                              value={calldataInputs.intentAmount}
+                              onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="Amount (wei)"
+                            />
+                            <Input
+                              label="Timestamp (sec)"
+                              name="intentTimestamp"
+                              value={calldataInputs.intentTimestamp}
+                              onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="Unix timestamp"
+                            />
+                            <Input
+                              label="Payee Details (bytes32)"
+                              name="payeeDetails"
+                              value={calldataInputs.payeeDetails}
+                              onChange={(e) => handleCalldataInputChange('payeeDetails', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="0x..."
+                            />
+                            <Input
+                              label="Fiat Currency (bytes32)"
+                              name="fiatCurrency"
+                              value={calldataInputs.fiatCurrency}
+                              onChange={(e) => handleCalldataInputChange('fiatCurrency', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="0x..."
+                            />
+                            <Input
+                              label="Conversion Rate (1e18)"
+                              name="conversionRate"
+                              value={calldataInputs.conversionRate}
+                              onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="Rate"
+                            />
+                            <Input
+                              label="Payment Method (bytes32)"
+                              name="paymentMethod"
+                              value={paymentMethodHex}
+                              onChange={(e) => setPaymentMethodHex(e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="0x..."
+                            />
+                            <Input
+                              label="Verifying Contract"
+                              name="verifyingContract"
+                              value={verifyingContract}
+                              onChange={(e) => setVerifyingContract(e.target.value)}
+                              valueFontSize="12px"
+                              placeholder="0x16b3e4a3CA36D3A4bCA281767f15C7ADeF4ab163"
+                            />
+                          </CalldataInputsGrid>
+                        </CalldataInputsContainer>
+                      </AdvancedContent>
+                    )}
+                  </AdvancedSection>
 
                   <ButtonContainer>
                     <div style={{ display: 'flex', gap: 12 }}>
                       <Button
                         onClick={handleSendToAttestation}
-                        disabled={attestationLoading}
+                        disabled={attestationLoading || proofStatus !== 'success'}
                         loading={attestationLoading}
                         height={48}
                         width={216}
@@ -758,60 +862,48 @@ const Home: React.FC = () => {
                     </div>
                   </ButtonContainer>
                 </AttestationControls>
-                {attestationResponse && (
-                  <AttestationResultSection>
-                    <ThemedText.BodySecondary>
-                      ✅ Attestation Response:
-                    </ThemedText.BodySecondary>
-                    <AttestationResponseArea readOnly value={attestationResponse} />
-                  </AttestationResultSection>
-                )}
-                {attestationError && (
-                  <AttestationErrorMessage>
-                    ❌ Attestation Error: {attestationError}
-                  </AttestationErrorMessage>
-                )}
-              </AttestationContainer>
-            ) : (
-              <EmptyStateContainer>
-                <EmptyStateMessage>
-                  Generate a proof first to enable attestation service
-                </EmptyStateMessage>
-              </EmptyStateContainer>
-            )}
-
+                </AttestationContainer>
+                <VerifyRight>
+                  {attestationResponse && (
+                    <AttestationResultSection>
+                      <ThemedText.BodySecondary>
+                        ✅ Attestation Response:
+                      </ThemedText.BodySecondary>
+                      <AttestationResponseArea readOnly value={attestationResponse} />
+                    </AttestationResultSection>
+                  )}
+                  {attestationError && (
+                    <AttestationErrorMessage>
+                      ❌ Attestation Error: {attestationError}
+                    </AttestationErrorMessage>
+                  )}
+                  {attestationResponse ? (
+                    <CalldataOutputContainer>
+                      {calldataError && (
+                        <CalldataErrorMessage>
+                          ❌ Error: {calldataError}
+                        </CalldataErrorMessage>
+                      )}
+                      {generatedCalldata && (
+                        <>
+                          <ThemedText.BodySecondary>
+                            ✅ Calldata generated successfully:
+                          </ThemedText.BodySecondary>
+                          <CalldataTextArea
+                            readOnly
+                            value={generatedCalldata}
+                            placeholder="Generated calldata will appear here"
+                          />
+                        </>
+                      )}
+                    </CalldataOutputContainer>
+                  ) : null}
+                </VerifyRight>
+              </VerifyGrid>
             
-
-            {attestationResponse ? (
-              <CalldataOutputContainer>
-                {calldataError && (
-                  <CalldataErrorMessage>
-                    ❌ Error: {calldataError}
-                  </CalldataErrorMessage>
-                )}
-
-                {generatedCalldata && (
-                  <>
-                    <ThemedText.BodySecondary>
-                      ✅ Calldata generated successfully:
-                    </ThemedText.BodySecondary>
-                    <CalldataTextArea
-                      readOnly
-                      value={generatedCalldata}
-                      placeholder="Generated calldata will appear here"
-                    />
-                  </>
-                )}
-              </CalldataOutputContainer>
-            ) : (
-              <EmptyStateContainer>
-                <EmptyStateMessage>
-                  Generate an attestation first to enable calldata generation
-                </EmptyStateMessage>
-              </EmptyStateContainer>
-            )}
-          </CalldataContent>
-        </CalldataSection>
+          </Section>
+        </VerifyPanel>
+        </AppContainer>
       </MainContent>
     </PageWrapper>
   );
@@ -851,7 +943,7 @@ const MainContent = styled.div`
   flex-direction: column;
   gap: 20px;
   width: 100%;
-  max-width: min(2200px, 100vw - 2rem);
+  max-width: 1440px;
   height: auto;
   box-sizing: border-box;
   
@@ -916,7 +1008,7 @@ const AppContainer = styled.div`
 `;
 
 const LeftPanel = styled.div`
-  padding: 15px;
+  padding: 12px;
   overflow: visible;
   border-right: 1px solid ${colors.defaultBorderColor};
   height: auto;
@@ -941,7 +1033,7 @@ const LeftPanel = styled.div`
 `;
 
 const MiddlePanel = styled.div`
-  padding: 15px;
+  padding: 12px;
   overflow: visible;
   border-right: 1px solid ${colors.defaultBorderColor};
   height: auto;
@@ -966,7 +1058,7 @@ const MiddlePanel = styled.div`
 `;
 
 const ProofPanel = styled.div`
-  padding: 15px;
+  padding: 12px;
   overflow: visible;
   border-right: none;
   height: auto;
@@ -983,6 +1075,31 @@ const ProofPanel = styled.div`
   }
   
   /* Mobile view */
+  @media (max-width: 768px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto;
+  }
+`;
+
+const VerifyPanel = styled.div`
+  padding: 12px;
+  overflow: visible;
+  border-right: none;
+  border-top: 1px solid ${colors.defaultBorderColor};
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  grid-column: 1 / -1; /* span all columns */
+  
+  @media (max-width: 1400px) and (min-width: 769px) {
+    border-right: none;
+    border-bottom: none;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  
   @media (max-width: 768px) {
     border-right: none;
     border-bottom: 1px solid ${colors.defaultBorderColor};
@@ -1386,29 +1503,7 @@ const AttestationErrorMessage = styled.div`
   font-size: 14px;
 `;
 
-const CalldataSection = styled.div`
-  width: 100%;
-  min-height: fit-content;
-  border-radius: 8px;
-  border: 1px solid ${colors.defaultBorderColor};
-  background: ${colors.container};
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  padding: 20px;
-  margin-bottom: 20px;
-  
-  @media (max-width: 768px) {
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
-    padding: 15px;
-  }
-`;
-
-const CalldataContent = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-`;
+// CalldataSection/CalldataContent removed after inlining into the App grid
 
 
 
@@ -1432,6 +1527,23 @@ const CalldataOutputContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: 10px;
+`;
+
+const VerifyGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const VerifyRight = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
 `;
 
 const CalldataTextArea = styled.textarea`
