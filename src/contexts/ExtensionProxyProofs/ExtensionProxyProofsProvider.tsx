@@ -102,7 +102,59 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
    * Handlers
    */
 
-  const handleExtensionMessage = function(event: any) {
+  const handleExtensionVersionMessageReceived = useCallback(function(event: ExtensionEventVersionMessage) {
+    console.log('Client received EXTENSION_VERSION_RESPONSE message');
+    console.log('event.data', event.data);  
+
+    const version = event.data.version;
+
+    setSideBarVersion(version);
+    setIsSidebarInstalled(true);
+
+    // Clear the interval once we receive the version
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  const handleExtensionMetadataMessagesResponse = useCallback(function(event: ExtensionRequestMetadataMessage) {
+    console.log('Client received METADATA_MESSAGES_RESPONSE message');
+    console.log('event.data', event.data);
+
+    const platform = event.data.platform as string;
+    
+    setPlatformMetadata(prev => ({
+      ...prev,
+      [platform]: {
+        metadata: event.data.metadata,
+        expiresAt: event.data.expiresAt
+      }
+    }));
+  }, []);
+
+  const handleExtensionProofIdMessageReceived = useCallback(function(event: ExtensionEventMessage) {
+    console.log('Client received FETCH_PROOF_REQUEST_ID_RESPONSE message');
+
+    if (!event.data.proofId) {
+      setProofId(null);
+      return;
+    }
+
+    setProofId(event.data.proofId);
+  }, []);
+
+  const handleExtensionProofByIdMessageReceived = useCallback(function(event: ExtensionEventMessage) {
+    console.log('Client received FETCH_PROOF_BY_ID_RESPONSE message');
+    console.log('event.data', event.data);
+
+    if (event.data.requestHistory && event.data.requestHistory.notaryRequest) {
+      const requestHistory = event.data.requestHistory.notaryRequest;
+      setPaymentProof(requestHistory);
+    }
+  }, []);
+
+  const handleExtensionMessage = useCallback(function(event: any) {
     if (event.origin !== window.location.origin) {
       return;
     };
@@ -122,59 +174,14 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     if (event.data.type && event.data.type === ExtensionReceiveMessage.FETCH_PROOF_BY_ID_RESPONSE) {
       handleExtensionProofByIdMessageReceived(event);
     };
-  };
+  }, [
+    handleExtensionVersionMessageReceived,
+    handleExtensionMetadataMessagesResponse,
+    handleExtensionProofIdMessageReceived,
+    handleExtensionProofByIdMessageReceived,
+  ]);
 
-  const handleExtensionVersionMessageReceived = function(event: ExtensionEventVersionMessage) {
-    console.log('Client received EXTENSION_VERSION_RESPONSE message');
-    console.log('event.data', event.data);  
-
-    const version = event.data.version;
-
-    setSideBarVersion(version);
-    setIsSidebarInstalled(true);
-
-    // Clear the interval once we receive the version
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  };
-
-  const handleExtensionMetadataMessagesResponse = function(event: ExtensionRequestMetadataMessage) {
-    console.log('Client received METADATA_MESSAGES_RESPONSE message');
-    console.log('event.data', event.data);
-
-    const platform = event.data.platform as string;
-    
-    setPlatformMetadata(prev => ({
-      ...prev,
-      [platform]: {
-        metadata: event.data.metadata,
-        expiresAt: event.data.expiresAt
-      }
-    }));
-  };
-
-  const handleExtensionProofIdMessageReceived = function(event: ExtensionEventMessage) {
-    console.log('Client received FETCH_PROOF_REQUEST_ID_RESPONSE message');
-
-    if (!event.data.proofId) {
-      setProofId(null);
-      return;
-    }
-
-    setProofId(event.data.proofId);
-  };
-
-  const handleExtensionProofByIdMessageReceived = function(event: ExtensionEventMessage) {
-    console.log('Client received FETCH_PROOF_BY_ID_RESPONSE message');
-    console.log('event.data', event.data);
-
-    if (event.data.requestHistory && event.data.requestHistory.notaryRequest) {
-      const requestHistory = event.data.requestHistory.notaryRequest;
-      setPaymentProof(requestHistory);
-    }
-  };
+  
 
   /*
    * Hooks

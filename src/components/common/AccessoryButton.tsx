@@ -13,7 +13,6 @@ import {
 } from 'react-feather';
 
 import Spinner from "@components/common/Spinner";
-import { colors } from '@theme/colors';
 
 
 type iconType = 

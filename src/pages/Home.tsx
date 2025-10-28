@@ -12,14 +12,67 @@ import braveSvg from '../assets/images/browsers/brave.svg';
 import { AccessoryButton } from '@components/common/AccessoryButton';
 import Spinner from '@components/common/Spinner';
 import { ChevronRight } from 'react-feather';
+import { ethers } from 'ethers';
+import { unifiedVerifierAbi } from '../abis/UnifiedVerifierAbi';
+import { keccak256 } from '@helpers/keccack';
+import { getDefaultVerifier, fetchIntentDetails, normalizeHex32, hexToDecimal } from '@helpers/contracts';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 const PROOF_FETCH_INTERVAL = 3000;
 const PROOF_GENERATION_TIMEOUT = 60000;
 
+// Default calldata inputs stored at module scope (strict, visible defaults)
+const DEFAULT_CALLDATA_INPUTS = {
+  intentAmount: '0',
+  intentTimestamp: '0',
+  payeeDetails:
+    '0x0000000000000000000000000000000000000000000000000000000000000000',
+  fiatCurrency: keccak256('USD'),
+  conversionRate: '0',
+};
+
+// Helper: derive platform (e.g., "venmo") from action type (e.g., "transfer_venmo").
+const derivePlatformFromActionType = (action: string, fallback: string) => {
+  if (!action) return fallback;
+  const parts = action.split('_');
+  return parts.length > 1 ? parts[parts.length - 1] : fallback;
+};
+
+// Step indicator component
+const StepIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding-top: 5px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid ${colors.defaultBorderColor};
+  background: ${colors.container};
+`;
+
+const StepNumber = styled.div`
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: ${colors.selectorHoverBorder};
+  color: ${colors.white};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  flex-shrink: 0;
+`;
+
+const StepLabel = styled.div`
+  font-weight: 600;
+  font-size: 14px;
+  color: ${colors.white};
+`;
+
 const Home: React.FC = () => {
   const [intentHash, setIntentHash] = useState(() => {
-    return localStorage.getItem('intentHash') || '0x0000000000000000000000000000000000000000000000000000000000000000';
+    return localStorage.getItem('intentHash') || '0x';
   });
   const [actionType, setActionType] = useState(() => {
     return localStorage.getItem('actionType') || 'transfer_venmo';
@@ -28,12 +81,9 @@ const Home: React.FC = () => {
     return localStorage.getItem('paymentPlatform') || 'venmo';
   });
   const [metadataPlatform, setMetadataPlatform] = useState(() => {
-    const initialStoredPaymentPlatform = localStorage.getItem('paymentPlatform') || 'venmo';
-    const storedMetadataVal = localStorage.getItem('metadataPlatform');
-    if (storedMetadataVal === null) {
-      return initialStoredPaymentPlatform;
-    }
-    return storedMetadataVal;
+    const initialPaymentPlatform = localStorage.getItem('paymentPlatform') || 'venmo';
+    const initialActionType = localStorage.getItem('actionType') || 'transfer_venmo';
+    return derivePlatformFromActionType(initialActionType, initialPaymentPlatform);
   });
   const [proofIndex, setProofIndex] = useState<number>(0);
   const [isInstallClicked, setIsInstallClicked] = useState(false);
@@ -44,10 +94,40 @@ const Home: React.FC = () => {
   const [resultProof, setResultProof] = useState('');
   const [proofGenerationStartTime, setProofGenerationStartTime] = useState<number | null>(null);
   const [proofGenerationDuration, setProofGenerationDuration] = useState<number | null>(null);
+  const [attestationResponse, setAttestationResponse] = useState<string | null>(null);
+  const [attestationLoading, setAttestationLoading] = useState(false);
+  const [attestationError, setAttestationError] = useState<string | null>(null);
+  const [chainId, setChainId] = useState<number>(() => {
+    const stored = localStorage.getItem('chainId');
+    return stored ? parseInt(stored) : 84532;
+  });
+  const [verifyingContract, setVerifyingContract] = useState<string>(() => {
+    const stored = localStorage.getItem('verifyingContract');
+    const byChain = getDefaultVerifier(84532);
+    return stored || byChain;
+  });
+  const [attestationBaseUrl, setAttestationBaseUrl] = useState<string>(() => {
+    const stored = localStorage.getItem('attestationBaseUrl');
+    return stored || 'https://attestation-service.zkp2p.xyz';
+  });
 
   const [triggerProofFetchPolling, setTriggerProofFetchPolling] = useState(false);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
+  // Input changes no longer used (auto-fetched intent); keep for completeness
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [generatedCalldata, setGeneratedCalldata] = useState<string>('');
+  const [calldataError, setCalldataError] = useState<string | null>(null);
+  // Step 4 independent intent hash for verification
+  const [verifyIntentHash, setVerifyIntentHash] = useState<string>('');
+  const [isIntentAdvancedOpen, setIsIntentAdvancedOpen] = useState(false);
+  const [fetchIntentLoading, setFetchIntentLoading] = useState(false);
+  const [fetchIntentError, setFetchIntentError] = useState<string | null>(null);
+  const [paymentMethodHex, setPaymentMethodHex] = useState<string>('');
+
+  // No localStorage persistence; inputs always reflect actual defaults or user edits
 
   const {
     isSidebarInstalled,
@@ -65,11 +145,28 @@ const Home: React.FC = () => {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   useEffect(() => {
+    localStorage.setItem('chainId', chainId.toString());
+  }, [chainId]);
+
+  useEffect(() => {
+    localStorage.setItem('verifyingContract', verifyingContract);
+  }, [verifyingContract]);
+
+  useEffect(() => {
+    localStorage.setItem('attestationBaseUrl', attestationBaseUrl);
+  }, [attestationBaseUrl]);
+
+  useEffect(() => {
     refetchExtensionVersion();
   }, [refetchExtensionVersion]);
 
   useEffect(() => {
-    localStorage.setItem('intentHash', intentHash);
+    try {
+      const hex = normalizeHex32(intentHash);
+      localStorage.setItem('intentHash', hex);
+    } catch {
+      localStorage.setItem('intentHash', intentHash);
+    }
   }, [intentHash]);
 
   useEffect(() => {
@@ -79,6 +176,20 @@ const Home: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('paymentPlatform', paymentPlatform);
   }, [paymentPlatform]);
+
+  // Auto-select verifier by chain (Base Sepolia / Base)
+  useEffect(() => {
+    if (chainId === 84532 || chainId === 8453) {
+      const next = getDefaultVerifier(chainId === 8453 ? 8453 : 84532);
+      setVerifyingContract(next);
+    }
+  }, [chainId]);
+
+  // Keep metadata group aligned with action type or selected payment platform.
+  useEffect(() => {
+    const derived = derivePlatformFromActionType(actionType, paymentPlatform);
+    setMetadataPlatform((prev) => (prev !== derived ? derived : prev));
+  }, [actionType, paymentPlatform]);
 
 
   useEffect(() => {
@@ -150,7 +261,6 @@ const Home: React.FC = () => {
   const handleMetadataPlatformChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = event.target.value;
     setMetadataPlatform(newValue);
-    localStorage.setItem('metadataPlatform', newValue);
   };
 
   const handleOpenSettings = () => {
@@ -174,6 +284,8 @@ const Home: React.FC = () => {
     setResultProof('');
     setProofGenerationStartTime(Date.now());
     setProofGenerationDuration(null);
+    setAttestationResponse(null);
+    setAttestationError(null);
 
     setTriggerProofFetchPolling(false);
     if (intervalId) {
@@ -186,9 +298,85 @@ const Home: React.FC = () => {
     }
 
     resetProofState();
-    generatePaymentProof(metadataPlatform, intentHash, meta.originalIndex, proofIndex);
+    // Extension expects decimal intent hash; convert from hex
+    const intentForProof = hexToDecimal(intentHash);
+    generatePaymentProof(metadataPlatform, intentForProof, meta.originalIndex, proofIndex);
 
     setTriggerProofFetchPolling(true);
+  };
+
+  const handleSendToAttestation = async () => {
+    if (!resultProof) return;
+
+    setAttestationLoading(true);
+    setAttestationError(null);
+    setAttestationResponse(null);
+
+    try {
+      const proofData = JSON.parse(resultProof);
+      const proofClaim = proofData.proof?.claim || proofData.claim;
+
+      if (!proofClaim) {
+        throw new Error('No proof claim found in the generated proof');
+      }
+
+      // Normalize to bytes32 using Step 4 hash
+      const intentHashHex = normalizeHex32(verifyIntentHash);
+      const amount = calldataInputs.intentAmount;
+      const timestampSec = ethers.BigNumber.from(calldataInputs.intentTimestamp || '0');
+      const timestampMs = timestampSec.mul(1000).toString();
+      const paymentMethod = paymentMethodHex || keccak256(paymentPlatform);
+      const fiatCurrency = calldataInputs.fiatCurrency;
+      const conversionRate = calldataInputs.conversionRate;
+      const payeeDetails = calldataInputs.payeeDetails;
+
+      const payload = {
+        proofType: 'reclaim',
+        proof: JSON.stringify({
+          claim: proofClaim,
+          signatures: proofData.proof?.signatures || proofData.signatures || {},
+        }),
+        chainId: chainId,
+        verifyingContract: verifyingContract,
+        intent: {
+          intentHash: intentHashHex,
+          amount,
+          timestampMs,
+          paymentMethod,
+          fiatCurrency,
+          conversionRate,
+          payeeDetails,
+          timestampBufferMs: '10000000',
+        },
+      };
+
+      console.log('Payload:', payload);
+
+      const endpoint = `${attestationBaseUrl}/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          responseData.error || `HTTP error! status: ${response.status} ${responseData.message}`
+        );
+      }
+
+      setAttestationResponse(JSON.stringify(responseData, null, 2));
+    } catch (error) {
+      console.error('Error sending to attestation service:', error);
+      setAttestationError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setAttestationLoading(false);
+    }
   };
 
   const browserSvgIcon = () =>
@@ -196,11 +384,113 @@ const Home: React.FC = () => {
   const addToBrowserText = () =>
     browserName === 'Brave' ? 'Add to Brave' : 'Add to Chrome';
 
+  // Helper: strict encoding of PaymentAttestation (no fallbacks)
+  const encodePaymentAttestation = (attestationResponse: any) => {
+    const abi = new ethers.utils.AbiCoder();
+    const resp = attestationResponse.responseObject;
+    const td = resp.typedDataValue;
+
+    const intentHash: string = td.intentHash;
+    const releaseAmount = ethers.BigNumber.from(td.releaseAmount);
+    const dataHash: string = td.dataHash;
+    const signatures: string[] = [resp.signature];
+    const encodedPaymentDetails: string = resp.encodedPaymentDetails;
+
+    if (!intentHash || !releaseAmount || !dataHash || !encodedPaymentDetails) {
+      throw new Error('Attestation response missing required fields');
+    }
+
+    return abi.encode(
+      ['tuple(bytes32,uint256,bytes32,bytes[],bytes,bytes)'],
+      [[intentHash, releaseAmount, dataHash, signatures, encodedPaymentDetails, '0x']]
+    );
+  };
+
+  // Function to generate calldata for verifyPayment (strict, no fallbacks)
+  const handleGenerateCalldata = () => {
+    try {
+      setCalldataError(null);
+      setGeneratedCalldata('');
+      
+      // Validate required inputs
+      if (!attestationResponse) throw new Error('Please generate an attestation first');
+
+      // Parse attestation response (strict fields only)
+      const parsedAttestation = JSON.parse(attestationResponse);
+      const respObj = parsedAttestation.responseObject;
+      const td = respObj.typedDataValue;
+
+      const attestorAddress = respObj.signer;
+      const attestationData = ethers.utils.defaultAbiCoder.encode(['address'], [attestorAddress]);
+
+      // Encode PaymentAttestation as bytes using the strict encoder
+      const encodedPaymentProof = encodePaymentAttestation(parsedAttestation);
+
+      // Intent hash comes from typedDataValue
+      const intentHashHex = td.intentHash;
+
+      // Create VerifyPaymentData struct for the verifier
+      const verifyPaymentData = {
+        intentHash: intentHashHex,
+        paymentProof: encodedPaymentProof,
+        data: attestationData,
+      } as const;
+
+      const verifierInterface = new ethers.utils.Interface(unifiedVerifierAbi);
+      const calldata = verifierInterface.encodeFunctionData('verifyPayment', [verifyPaymentData]);
+
+      setGeneratedCalldata(calldata);
+    } catch (error) {
+      console.error('Error generating calldata:', error);
+      setCalldataError(error instanceof Error ? error.message : 'Unknown error');
+    }
+  };
+
+  const handleCalldataInputChange = (field: string, value: string) => {
+    setCalldataInputs((prev: typeof DEFAULT_CALLDATA_INPUTS) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  // Initialize Step 4 intent hash once from Step 1 on mount
+  useEffect(() => {
+    setVerifyIntentHash(intentHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFetchIntentFromChain = async () => {
+    try {
+      setFetchIntentError(null);
+      setFetchIntentLoading(true);
+      const netChain: 84532 | 8453 = chainId === 8453 ? 8453 : 84532;
+      const hex = normalizeHex32(verifyIntentHash);
+      const onchain = await fetchIntentDetails(netChain, hex);
+      setCalldataInputs({
+        intentAmount: onchain.amount,
+        intentTimestamp: onchain.timestampSec,
+        fiatCurrency: onchain.fiatCurrency,
+        conversionRate: onchain.conversionRate,
+        payeeDetails: onchain.payeeDetails || calldataInputs.payeeDetails,
+      });
+      setPaymentMethodHex(onchain.paymentMethod);
+    } catch (e: any) {
+      setFetchIntentError(e?.message || 'Failed to fetch intent from chain');
+    } finally {
+      setFetchIntentLoading(false);
+    }
+  };
+
   return (
     <PageWrapper>
-      <AppContainer>
+      <MainContent>
+        <AppContainer>
         <LeftPanel>
           <Section>
+            <StepIndicator>
+              <StepNumber>1</StepNumber>
+              <StepLabel>Enter Provider</StepLabel>
+            </StepIndicator>
             <StatusItem>
               <StatusLabel>Version:</StatusLabel>
               <StatusValue>
@@ -219,7 +509,16 @@ const Home: React.FC = () => {
               label="Intent Hash"
               name="intentHash"
               value={intentHash}
-              onChange={(e) => setIntentHash(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                // Allow empty, optional 0x, and hex digits (unprefixed ok)
+                if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) {
+                  setIntentHash(v);
+                }
+              }}
+              onBlur={() => {
+                try { setIntentHash((v) => normalizeHex32(v)); } catch {}
+              }}
               valueFontSize="16px"
             />
             <Input
@@ -294,6 +593,10 @@ const Home: React.FC = () => {
 
         <MiddlePanel>
           <Section>
+            <StepIndicator>
+              <StepNumber>2</StepNumber>
+              <StepLabel>Fetch Metadata</StepLabel>
+            </StepIndicator>
             <StatusItem>
               <StatusLabel>Available Metadata</StatusLabel>
             </StatusItem>
@@ -345,8 +648,12 @@ const Home: React.FC = () => {
           </Section>
         </MiddlePanel>
 
-        <RightPanel>
+        <ProofPanel>
           <Section>
+            <StepIndicator>
+              <StepNumber>3</StepNumber>
+              <StepLabel>Generate zkTLS Proof</StepLabel>
+            </StepIndicator>
             <StatusItem>
               <StatusLabel>Proof Status</StatusLabel>
             </StatusItem>
@@ -392,8 +699,212 @@ const Home: React.FC = () => {
               </EmptyStateContainer>
             )}
           </Section>
-        </RightPanel>
-      </AppContainer>
+        </ProofPanel>
+
+        <VerifyPanel>
+          <Section>
+            <StepIndicator>
+              <StepNumber>4</StepNumber>
+              <StepLabel>Verify zkTLS Proof & Generate Calldata</StepLabel>
+            </StepIndicator>
+
+            
+            <VerifyGrid>
+                <AttestationContainer>
+                  <AttestationControls>
+                    <StatusItem>
+                      <StatusLabel>Attestation Service</StatusLabel>
+                    </StatusItem>
+                    <StyledInputContainer>
+                      <StyledInputLabel>Intent Hash (for Verify)</StyledInputLabel>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                        <StyledSelect as="input"
+                          value={verifyIntentHash}
+                          onChange={(e: any) => {
+                            const v = e.target.value;
+                            if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) setVerifyIntentHash(v);
+                          }}
+                          onBlur={() => { try { setVerifyIntentHash((v) => normalizeHex32(v)); } catch {} }}
+                          style={{ flex: 1 }}
+                        />
+                        <AccessoryButton
+                          onClick={handleFetchIntentFromChain}
+                          loading={fetchIntentLoading}
+                          disabled={fetchIntentLoading}
+                          height={40}
+                          icon="chevronRight"
+                          title="Fetch Intent"
+                        />
+                      </div>
+                      {fetchIntentError && (
+                        <ThemedText.LabelSmall style={{ color: '#FF3B30', marginTop: 6 }}>
+                          {fetchIntentError}
+                        </ThemedText.LabelSmall>
+                      )}
+                    </StyledInputContainer>
+                  <Input
+                    label="Attestation Service URL"
+                    name="attestationBaseUrl"
+                    value={attestationBaseUrl}
+                    onChange={(e) => setAttestationBaseUrl(e.target.value)}
+                    valueFontSize="14px"
+                    placeholder="https://attestation-service-staging.zkp2p.xyz"
+                    readOnly={attestationLoading}
+                  />
+                  <StyledInputContainer>
+                    <StyledInputLabel>Chain</StyledInputLabel>
+            <StyledSelect
+              value={chainId}
+              onChange={(e) => setChainId(parseInt(e.target.value))}
+              disabled={attestationLoading}
+            >
+              <option value="84532">Base Sepolia (84532)</option>
+              <option value="8453">Base (8453)</option>
+            </StyledSelect>
+                  </StyledInputContainer>
+                  {/* Verifying Contract moved to Advanced */}
+                  <AdvancedSection>
+                    <AdvancedHeader onClick={() => setIsIntentAdvancedOpen(!isIntentAdvancedOpen)}>
+                      <ThemedText.BodySmall>Intent Details (Advanced)</ThemedText.BodySmall>
+                      <ChevronRight 
+                        size={16} 
+                        style={{ 
+                          transform: isIntentAdvancedOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.2s ease'
+                        }} 
+                      />
+                    </AdvancedHeader>
+                    {isIntentAdvancedOpen && (
+                      <AdvancedContent>
+                        <CalldataInputsContainer>
+                          <CalldataInputsGrid>
+                            <Input
+                              label="Amount"
+                              name="intentAmount"
+                              value={calldataInputs.intentAmount}
+                              onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="Amount (wei)"
+                            />
+                            <Input
+                              label="Timestamp (sec)"
+                              name="intentTimestamp"
+                              value={calldataInputs.intentTimestamp}
+                              onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="Unix timestamp"
+                            />
+                            <Input
+                              label="Payee Details (bytes32)"
+                              name="payeeDetails"
+                              value={calldataInputs.payeeDetails}
+                              onChange={(e) => handleCalldataInputChange('payeeDetails', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="0x..."
+                            />
+                            <Input
+                              label="Fiat Currency (bytes32)"
+                              name="fiatCurrency"
+                              value={calldataInputs.fiatCurrency}
+                              onChange={(e) => handleCalldataInputChange('fiatCurrency', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="0x..."
+                            />
+                            <Input
+                              label="Conversion Rate (1e18)"
+                              name="conversionRate"
+                              value={calldataInputs.conversionRate}
+                              onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="Rate"
+                            />
+                            <Input
+                              label="Payment Method (bytes32)"
+                              name="paymentMethod"
+                              value={paymentMethodHex}
+                              onChange={(e) => setPaymentMethodHex(e.target.value)}
+                              valueFontSize="14px"
+                              placeholder="0x..."
+                            />
+                            <Input
+                              label="Verifying Contract"
+                              name="verifyingContract"
+                              value={verifyingContract}
+                              onChange={(e) => setVerifyingContract(e.target.value)}
+                              valueFontSize="12px"
+                              placeholder="0x16b3e4a3CA36D3A4bCA281767f15C7ADeF4ab163"
+                            />
+                          </CalldataInputsGrid>
+                        </CalldataInputsContainer>
+                      </AdvancedContent>
+                    )}
+                  </AdvancedSection>
+
+                  <ButtonContainer>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <Button
+                        onClick={handleSendToAttestation}
+                        disabled={attestationLoading || proofStatus !== 'success'}
+                        loading={attestationLoading}
+                        height={48}
+                        width={216}
+                      >
+                        Verify Proof
+                      </Button>
+                      <Button
+                        onClick={handleGenerateCalldata}
+                        height={48}
+                        width={216}
+                        disabled={!attestationResponse}
+                      >
+                        Generate Calldata
+                      </Button>
+                    </div>
+                  </ButtonContainer>
+                </AttestationControls>
+                </AttestationContainer>
+                <VerifyRight>
+                  {attestationResponse && (
+                    <AttestationResultSection>
+                      <ThemedText.BodySecondary>
+                        ✅ Attestation Response:
+                      </ThemedText.BodySecondary>
+                      <AttestationResponseArea readOnly value={attestationResponse} />
+                    </AttestationResultSection>
+                  )}
+                  {attestationError && (
+                    <AttestationErrorMessage>
+                      ❌ Attestation Error: {attestationError}
+                    </AttestationErrorMessage>
+                  )}
+                  {attestationResponse ? (
+                    <CalldataOutputContainer>
+                      {calldataError && (
+                        <CalldataErrorMessage>
+                          ❌ Error: {calldataError}
+                        </CalldataErrorMessage>
+                      )}
+                      {generatedCalldata && (
+                        <>
+                          <ThemedText.BodySecondary>
+                            ✅ Calldata generated successfully:
+                          </ThemedText.BodySecondary>
+                          <CalldataTextArea
+                            readOnly
+                            value={generatedCalldata}
+                            placeholder="Generated calldata will appear here"
+                          />
+                        </>
+                      )}
+                    </CalldataOutputContainer>
+                  ) : null}
+                </VerifyRight>
+              </VerifyGrid>
+            
+          </Section>
+        </VerifyPanel>
+        </AppContainer>
+      </MainContent>
     </PageWrapper>
   );
 };
@@ -404,101 +915,240 @@ const PageWrapper = styled.div`
   justify-content: center;
   align-items: flex-start;
   padding: 1rem;
+  width: 100%;
+  max-width: 100vw;
+  height: auto;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: visible;
+  box-sizing: border-box;
+  
+  /* Tablet view - allow vertical scrolling */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  
+  @media (max-width: 768px) {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    align-items: flex-start;
+  }
+`;
+
+const MainContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 1440px;
+  height: auto;
+  box-sizing: border-box;
+  
+  @media (max-width: 768px) {
+    gap: 0;
+  }
 `;
 
 const AppContainer = styled.div`
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
-  max-width: 1400px;
+  height: auto;
+  max-height: none;
   border-radius: 8px;
   border: 1px solid ${colors.defaultBorderColor};
-  overflow: hidden;
+  overflow: visible;
   background: ${colors.container};
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+  
+  /* Tablet view (landscape) - 2x2 grid with scrollable container */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: minmax(320px, auto);
+    row-gap: 0;
+    column-gap: 0;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    
+    /* Custom scrollbar for the container */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+    
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background-color: rgba(155, 155, 155, 0.5);
+      border-radius: 20px;
+    }
+  }
+  
+  /* Mobile view - stack vertically */
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(4, auto);
+    height: auto;
+    max-height: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    overflow: visible;
+  }
 `;
 
 const LeftPanel = styled.div`
-  flex: 1;
-  max-width: 340px;
-  padding: 20px;
-  overflow-y: auto;
+  padding: 12px;
+  overflow: visible;
   border-right: 1px solid ${colors.defaultBorderColor};
+  height: auto;
+  display: flex;
+  flex-direction: column;
   
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
+  /* Tablet view (landscape) - 2x2 grid */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    border-right: 1px solid ${colors.defaultBorderColor};
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto; /* Let content size the cell */
+    min-height: 0; /* Allow proper sizing within grid */
+    overflow: visible;
   }
   
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.5);
-    border-radius: 20px;
+  /* Mobile view */
+  @media (max-width: 768px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto;
   }
 `;
 
 const MiddlePanel = styled.div`
-  flex: 1.2;
-  padding: 20px;
-  overflow-y: auto;
+  padding: 12px;
+  overflow: visible;
   border-right: 1px solid ${colors.defaultBorderColor};
+  height: auto;
+  display: flex;
+  flex-direction: column;
   
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
+  /* Tablet view (landscape) - 2x2 grid */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto; /* Let content size the cell */
+    min-height: 0; /* Allow proper sizing within grid */
+    overflow: visible;
   }
   
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.5);
-    border-radius: 20px;
+  /* Mobile view */
+  @media (max-width: 768px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto;
   }
 `;
 
-const RightPanel = styled.div`
-  flex: 2;
-  padding: 20px;
-  overflow-y: auto;
+const ProofPanel = styled.div`
+  padding: 12px;
+  overflow: visible;
+  border-right: none;
+  height: auto;
+  display: flex;
+  flex-direction: column;
   
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
+  /* Tablet view (landscape) - 2x2 grid */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    border-right: 1px solid ${colors.defaultBorderColor};
+    border-bottom: none;
+    height: auto; /* Let content size the cell */
+    min-height: 0; /* Allow proper sizing within grid */
+    overflow: visible;
   }
   
-  &::-webkit-scrollbar-track {
-    background: transparent;
+  /* Mobile view */
+  @media (max-width: 768px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto;
+  }
+`;
+
+const VerifyPanel = styled.div`
+  padding: 12px;
+  overflow: visible;
+  border-right: none;
+  border-top: 1px solid ${colors.defaultBorderColor};
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  grid-column: 1 / -1; /* span all columns */
+  
+  @media (max-width: 1400px) and (min-width: 769px) {
+    border-right: none;
+    border-bottom: none;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
   }
   
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(155, 155, 155, 0.5);
-    border-radius: 20px;
+  @media (max-width: 768px) {
+    border-right: none;
+    border-bottom: 1px solid ${colors.defaultBorderColor};
+    height: auto;
   }
 `;
 
 const Section = styled.div`
-  padding: 10px;
-  margin-bottom: 15px;
+  padding: 5px;
+  margin-bottom: 10px;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 12px;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: visible;
+  
+  /* Custom scrollbar for internal content */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.3) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.3);
+    border-radius: 20px;
+  }
+  
+  /* Ensure content doesn't overflow in tablet view */
+  @media (max-width: 1400px) and (min-width: 769px) {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+  }
 `;
 
 const StatusItem = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 5px;
+  margin-top: 2px;
 `;
 
 const StatusLabel = styled.div`
@@ -515,15 +1165,18 @@ const ButtonContainer = styled.div`
   display: flex;
   justify-content: center;
   width: 100%;
-  margin-top: 5px;
+  margin-top: 2px;
 `;
 
 const MetadataList = styled.div`
-  max-height: 600px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  /* Keep the list from stretching the page; scroll within the panel */
+  max-height: min(520px, 60vh);
+  overflow-y: auto;
+  padding-right: 4px;
+  -webkit-overflow-scrolling: touch;
   
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
@@ -539,6 +1192,10 @@ const MetadataList = styled.div`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    max-height: 45vh;
   }
 `;
 
@@ -583,7 +1240,8 @@ const ProofContainer = styled.div`
 const ProofTextArea = styled.textarea`
   width: 100%;
   flex: 1;
-  min-height: 500px;
+  min-height: 260px;
+  max-height: 440px;
   margin-top: 10px;
   padding: 10px;
   border: 1px solid ${colors.defaultBorderColor};
@@ -612,6 +1270,10 @@ const ProofTextArea = styled.textarea`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    min-height: 250px;
   }
 `;
 
@@ -670,8 +1332,12 @@ const EmptyStateContainer = styled.div`
   align-items: center;
   justify-content: center;
   height: 100%;
-  min-height: 550px;
+  min-height: 300px;
   padding: 20px;
+  
+  @media (max-width: 768px) {
+    min-height: 200px;
+  }
 `;
 
 const EmptyStateMessage = styled(ThemedText.BodySmall)`
@@ -704,6 +1370,229 @@ const AdvancedContent = styled.div`
   flex-direction: column;
   gap: 15px;
   border-top: 1px solid ${colors.defaultBorderColor};
+`;
+
+// (AttestationPanel removed after consolidating Step 4 and Step 5)
+
+const AttestationContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  justify-content: space-between;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+`;
+
+const AttestationControls = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  align-items: stretch;
+  
+  @media (max-width: 480px) {
+    flex-direction: column;
+    
+    select, button, input {
+      width: 100%;
+    }
+  }
+`;
+
+const AttestationResultSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+`;
+
+const StyledInputContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid ${colors.defaultBorderColor};
+  background-color: ${colors.inputDefaultColor};
+  width: 100%;
+  box-sizing: border-box;
+
+  &:focus-within {
+    border-color: ${colors.inputPlaceholderColor};
+  }
+`;
+
+const StyledInputLabel = styled.label`
+  font-size: 14px;
+  font-weight: 550;
+  color: #CED4DA;
+  margin-bottom: 10px;
+`;
+
+const StyledSelect = styled.select`
+  width: 100%;
+  border: 0;
+  padding: 0;
+  color: ${colors.darkText};
+  background-color: ${colors.inputDefaultColor};
+  font-size: 14px;
+  cursor: pointer;
+
+  &:focus {
+    box-shadow: none;
+    outline: none;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  option {
+    background: ${colors.container};
+    color: ${colors.darkText};
+  }
+`;
+
+const AttestationResponseArea = styled.textarea`
+  width: 100%;
+  flex: 1;
+  min-height: 250px;
+  max-height: calc(100vh - 300px);
+  padding: 10px;
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  resize: none;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  box-sizing: border-box;
+  background: rgba(0, 128, 0, 0.1);
+  color: ${colors.white};
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    min-height: 250px;
+  }
+`;
+
+const AttestationErrorMessage = styled.div`
+  padding: 10px;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  border-radius: 4px;
+  color: #FF3B30;
+  font-size: 14px;
+`;
+
+// CalldataSection/CalldataContent removed after inlining into the App grid
+
+
+
+const CalldataInputsContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const CalldataInputsGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const CalldataOutputContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const VerifyGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const VerifyRight = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+`;
+
+const CalldataTextArea = styled.textarea`
+  width: 100%;
+  min-height: 150px;
+  height: auto;
+  max-height: 300px;
+  padding: 10px;
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
+  box-sizing: border-box;
+  background: rgba(0, 128, 0, 0.05);
+  color: ${colors.white};
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    min-height: 150px;
+  }
+`;
+
+const CalldataErrorMessage = styled.div`
+  padding: 10px;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  border-radius: 4px;
+  color: #FF3B30;
+  font-size: 14px;
 `;
 
 export { Home };

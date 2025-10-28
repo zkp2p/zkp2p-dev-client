@@ -138,7 +138,40 @@ export const generateFakeVenmoPaymentProof = async (
   const proofObject = {
     claimInfo: {
       provider: 'http',
-      parameters: '{ "additionalClientOptions": {}, "body": "", "geoLocation": "", "headers": { "Referer": "https://account.venmo.com/account/mfa/code-prompt?k=GU2FOmmEplsWSQvWxhUlPeMe8xkV4FyimNHIiKY4ELvLxJ5ASp2wS0sxc7CaUiEF&next=%2F%3Ffeed%3Dmine", "Sec-Fetch-Mode": "same-origin", "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari/604.1" }, "method": "GET", "paramValues": { "URL_PARAMS_GRD": "1168869611798528966", "amount": "1.00", "date": "2025-01-14T03:22:59", "paymentId": "4245113625265405739", "receiverId": "1557532678029312858" }, "responseMatches": [{ "invert": false, "type": "contains", "value": "\"amount\":\"- ${{amount}}\"" }, { "invert": false, "type": "contains", "value": "\"date\":\"{{date}}\"" }, { "invert": false, "type": "contains", "value": "\"id\":\"{{receiverId}}\"" }, { "invert": false, "type": "contains", "value": "\"paymentId\":\"{{paymentId}}\"" }], "responseRedactions": [{ "jsonPath": "$.stories[0].amount", "regex": "\"amount\":\"- \\$(.*)\"", "xPath": "" }, { "jsonPath": "$.stories[0].date", "regex": "\"date\":\"(.*)\"", "xPath": "" }, { "jsonPath": "$.stories[0].title.receiver.id", "regex": "\"id\":\"(.*)\"", "xPath": "" }, { "jsonPath": "$.stories[0].paymentId", "regex": "\"paymentId\":\"(.*)\"", "xPath": "" }], "url": "https://account.venmo.com/api/stories?feedType=me&externalId={{URL_PARAMS_GRD}}" }',
+      parameters: JSON.stringify({
+        additionalClientOptions: {},
+        body: "",
+        geoLocation: "",
+        headers: {
+          Referer:
+            "https://account.venmo.com/account/mfa/code-prompt?k=GU2FOmmEplsWSQvWxhUlPeMe8xkV4FyimNHIiKY4ELvLxJ5ASp2wS0sxc7CaUiEF&next=%2F%3Ffeed%3Dmine",
+          "Sec-Fetch-Mode": "same-origin",
+          "User-Agent":
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari/604.1",
+        },
+        method: "GET",
+        paramValues: {
+          URL_PARAMS_GRD: senderId,
+          amount,
+          date,
+          paymentId,
+          receiverId,
+        },
+        responseMatches: [
+          { invert: false, type: "contains", value: `"amount":"- $${amount}"` },
+          { invert: false, type: "contains", value: `"date":"${date}"` },
+          { invert: false, type: "contains", value: `"id":"${receiverId}"` },
+          { invert: false, type: "contains", value: `"paymentId":"${paymentId}"` },
+        ],
+        responseRedactions: [
+          { jsonPath: "$.stories[0].amount", regex: '"amount":"- \\$(.*)"', xPath: "" },
+          { jsonPath: "$.stories[0].date", regex: '"date":"(.*)"', xPath: "" },
+          { jsonPath: "$.stories[0].title.receiver.id", regex: '"id":"(.*)"', xPath: "" },
+          { jsonPath: "$.stories[0].paymentId", regex: '"paymentId":"(.*)"', xPath: "" },
+        ],
+        url:
+          "https://account.venmo.com/api/stories?feedType=me&externalId={{URL_PARAMS_GRD}}",
+      }),
       context: `{"contextAddress": "${contextAddress}", "contextMessage": "${intentHash}", "extractedParameters": { "URL_PARAMS_GRD": "${senderId}", "amount": "${amount}", "date": "${date}", "paymentId": "${paymentId}", "receiverId": "${receiverId}" }, "providerHash": "0x14de8b5503a4a6973bbaa9aa301ec7843e9bcaa3af05e6610b54c6fcc56aa425"}`,
     },
     signedClaim: {

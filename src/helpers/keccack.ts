@@ -1,7 +1,5 @@
 import { ethers } from "ethers";
 
-const abiCoder = new ethers.utils.AbiCoder();
-
 export const keccak256 = (inputString: string): string => {
   return ethers.utils.solidityKeccak256(["string"], [inputString]);
 };
