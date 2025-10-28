@@ -517,7 +517,7 @@ const Home: React.FC = () => {
                 }
               }}
               onBlur={() => {
-                try { setIntentHash((v) => normalizeHex32(v)); } catch {}
+                try { setIntentHash(normalizeHex32(intentHash)); } catch {}
               }}
               valueFontSize="16px"
             />
@@ -724,7 +724,7 @@ const Home: React.FC = () => {
                             const v = e.target.value;
                             if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) setVerifyIntentHash(v);
                           }}
-                          onBlur={() => { try { setVerifyIntentHash((v) => normalizeHex32(v)); } catch {} }}
+                          onBlur={() => { try { setVerifyIntentHash(normalizeHex32(verifyIntentHash)); } catch {} }}
                           style={{ flex: 1 }}
                         />
                         <AccessoryButton

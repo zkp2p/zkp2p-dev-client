@@ -61,7 +61,21 @@ export async function fetchIntentDetails(
 export function normalizeHex32(value: string): string {
   const v = (value || '').trim();
   const prefixed = v.startsWith('0x') ? v : `0x${v}`;
-  return ethers.utils.hexZeroPad(prefixed, 32);
+  // Treat empty or bare 0x as zero
+  if (prefixed === '0x' || prefixed === '0x0') {
+    return '0x' + '0'.repeat(64);
+  }
+  // Ensure even-length hex
+  const hex = prefixed.length % 2 === 0 ? prefixed : ('0x0' + prefixed.slice(2));
+  if (!ethers.utils.isHexString(hex)) {
+    throw new Error('Invalid hex string');
+  }
+  const raw = hex.slice(2);
+  if (raw.length > 64) {
+    // Trim to lowest 32 bytes instead of throwing
+    return '0x' + raw.slice(-64);
+  }
+  return '0x' + raw.padStart(64, '0');
 }
 
 export function hexToDecimal(value: string): string {
