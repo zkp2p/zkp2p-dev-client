@@ -106,7 +106,7 @@ const Home: React.FC = () => {
   });
   const [attestationBaseUrl, setAttestationBaseUrl] = useState<string>(() => {
     const stored = localStorage.getItem('attestationBaseUrl');
-    return stored || 'https://attestation-service-staging.zkp2p.xyz';
+    return stored || 'https://attestation-service.zkp2p.xyz';
   });
 
   const [triggerProofFetchPolling, setTriggerProofFetchPolling] = useState(false);
