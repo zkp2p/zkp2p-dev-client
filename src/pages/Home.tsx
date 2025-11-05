@@ -352,7 +352,7 @@ const Home: React.FC = () => {
 
       console.log('Payload:', payload);
 
-      const endpoint = `${attestationBaseUrl}/verify/${paymentPlatform}/transfer_${paymentPlatform}`;
+      const endpoint = `${attestationBaseUrl}/verify/${paymentPlatform}/transfer_${metadataPlatform}`;
 
       const response = await fetch(endpoint, {
         method: 'POST',
