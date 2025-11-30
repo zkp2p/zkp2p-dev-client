@@ -92,6 +92,7 @@ const Home: React.FC = () => {
     useState<ExtensionRequestMetadata | null>(null);
   const [proofStatus, setProofStatus] = useState<ProofGenerationStatusType>('idle');
   const [resultProof, setResultProof] = useState('');
+  const [isPasteMode, setIsPasteMode] = useState(false);
   const [proofGenerationStartTime, setProofGenerationStartTime] = useState<number | null>(null);
   const [proofGenerationDuration, setProofGenerationDuration] = useState<number | null>(null);
   const [attestationResponse, setAttestationResponse] = useState<string | null>(null);
@@ -453,6 +454,37 @@ const Home: React.FC = () => {
     }));
   };
 
+  // Handle pasted proof changes
+  const handlePastedProofChange = (value: string) => {
+    setResultProof(value);
+    // Try to validate if it's a valid proof JSON
+    if (value.trim()) {
+      try {
+        const parsed = JSON.parse(value);
+        // Check if it has the expected proof structure
+        if (parsed.proof?.claim || parsed.claim) {
+          setProofStatus('success');
+        }
+      } catch {
+        // Not valid JSON yet, keep current status
+      }
+    } else {
+      setProofStatus('idle');
+    }
+  };
+
+  // Toggle paste mode
+  const handleTogglePasteMode = () => {
+    setIsPasteMode(!isPasteMode);
+    if (!isPasteMode) {
+      // Entering paste mode - reset proof state
+      setResultProof('');
+      setProofStatus('idle');
+      setAttestationResponse(null);
+      setAttestationError(null);
+    }
+  };
+
   // Initialize Step 4 intent hash once from Step 1 on mount
   useEffect(() => {
     setVerifyIntentHash(intentHash);
@@ -656,8 +688,30 @@ const Home: React.FC = () => {
             </StepIndicator>
             <StatusItem>
               <StatusLabel>Proof Status</StatusLabel>
+              <AccessoryButton
+                onClick={handleTogglePasteMode}
+                height={32}
+              >
+                {isPasteMode ? 'Generate Mode' : 'Paste Proof'}
+              </AccessoryButton>
             </StatusItem>
-            {proofStatus !== 'idle' ? (
+            {isPasteMode ? (
+              <ProofContainer>
+                <ThemedText.BodySecondary>
+                  Paste your proof JSON below:
+                </ThemedText.BodySecondary>
+                <ProofTextArea
+                  value={resultProof}
+                  onChange={(e) => handlePastedProofChange(e.target.value)}
+                  placeholder='Paste your proof JSON here...&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { ... },&#10;    "signatures": { ... }&#10;  }&#10;}'
+                />
+                {proofStatus === 'success' && (
+                  <ThemedText.BodySecondary style={{ color: '#34C759' }}>
+                    Valid proof detected
+                  </ThemedText.BodySecondary>
+                )}
+              </ProofContainer>
+            ) : proofStatus !== 'idle' ? (
               <ProofContainer>
                 {proofStatus === 'generating' && (
                   <SpinnerContainer>
@@ -673,7 +727,7 @@ const Home: React.FC = () => {
                   <>
                     <ThemedText.BodySecondary>
                       {proofStatus === 'success'
-                        ? `👍 Proof generated! ${proofGenerationDuration ? `(${(proofGenerationDuration / 1000).toFixed(1)}s)` : ''}`
+                        ? `Proof generated! ${proofGenerationDuration ? `(${(proofGenerationDuration / 1000).toFixed(1)}s)` : ''}`
                         : <>
                           Error generating proof: {' '}
                           <ErrorMessage>
@@ -687,7 +741,7 @@ const Home: React.FC = () => {
                 )}
                 {proofStatus === 'timeout' && (
                   <ThemedText.LabelSmall>
-                    ⏱ Timeout: no proof received.
+                    Timeout: no proof received.
                   </ThemedText.LabelSmall>
                 )}
               </ProofContainer>
@@ -844,7 +898,7 @@ const Home: React.FC = () => {
                     <div style={{ display: 'flex', gap: 12 }}>
                       <Button
                         onClick={handleSendToAttestation}
-                        disabled={attestationLoading || proofStatus !== 'success'}
+                        disabled={attestationLoading || !resultProof || proofStatus !== 'success'}
                         loading={attestationLoading}
                         height={48}
                         width={216}
