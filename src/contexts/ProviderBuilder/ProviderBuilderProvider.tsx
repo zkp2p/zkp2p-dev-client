@@ -1,6 +1,7 @@
 import React, { useEffect, useState, ReactNode, useCallback, useRef } from 'react';
 
-import { RequestLog, CaptureStatus, DiscoveryOptions, DiscoveryResult } from '@helpers/types/providerBuilder';
+import { RequestLog, CaptureStatus, DiscoveryOptions, DiscoveryResult, ProviderSettings, ProviderSubmission } from '@helpers/types/providerBuilder';
+import { getPresignedUrl, uploadSubmission } from '@helpers/api/providerSubmission';
 
 import ProviderBuilderContext from './ProviderBuilderContext';
 
@@ -52,6 +53,11 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
   const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
   const [isDiscovering, setIsDiscovering] = useState<boolean>(false);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+
+  // Submission state
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const stopCaptureResolveRef = useRef<((requests: RequestLog[]) => void) | null>(null);
@@ -153,6 +159,73 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
     setDiscoveryResult(null);
     setDiscoveryError(null);
     setIsDiscovering(false);
+  }, []);
+
+  /*
+   * Submission Functions
+   */
+
+  const submitProvider = useCallback(async (
+    platform: string,
+    providerTemplate: ProviderSettings,
+    countryCode?: string,
+    submitterAddress?: string
+  ): Promise<string | null> => {
+    console.log('ProviderBuilder: Starting submission for platform:', platform);
+
+    setIsSubmitting(true);
+    setSubmissionError(null);
+    setSubmissionId(null);
+
+    try {
+      // 1. Get presigned URL from Curator
+      console.log('ProviderBuilder: Getting presigned URL...');
+      const { uploadUrl, submissionId: newSubmissionId } = await getPresignedUrl(
+        platform,
+        submitterAddress
+      );
+
+      // 2. Build submission payload
+      const submission: ProviderSubmission = {
+        id: newSubmissionId,
+        submittedAt: new Date().toISOString(),
+        submittedBy: submitterAddress,
+        platform,
+        countryCode,
+        providerTemplate,
+        discovery: {
+          confidence: discoveryResult?.confidence || 0,
+          sampleTransactions: discoveryResult?.sampleTransactions || [],
+          candidateEndpoints: discoveryResult?.debug?.candidateEndpoints
+            ? Array(discoveryResult.debug.candidateEndpoints).fill('').map((_, i) => `endpoint_${i}`)
+            : [],
+          llmCallCount: discoveryResult?.debug?.llmCalls || 0,
+          totalLatencyMs: discoveryResult?.debug?.totalLatencyMs || 0,
+        },
+      };
+
+      // 3. Upload to S3 via presigned URL
+      console.log('ProviderBuilder: Uploading submission to S3...');
+      await uploadSubmission(uploadUrl, submission);
+
+      console.log('ProviderBuilder: Submission successful, ID:', newSubmissionId);
+      setSubmissionId(newSubmissionId);
+
+      return newSubmissionId;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown submission error';
+      console.error('ProviderBuilder: Submission error:', errorMsg);
+      setSubmissionError(errorMsg);
+      return null;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [discoveryResult]);
+
+  const clearSubmission = useCallback(() => {
+    setSubmissionId(null);
+    setSubmissionError(null);
+    setIsSubmitting(false);
   }, []);
 
   /*
@@ -307,12 +380,19 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
         isDiscovering,
         discoveryError,
 
+        isSubmitting,
+        submissionError,
+        submissionId,
+
         startCapture,
         stopCapture,
         clearCapture,
 
         discoverProvider,
         clearDiscovery,
+
+        submitProvider,
+        clearSubmission,
 
         refreshExtensionStatus,
       }}

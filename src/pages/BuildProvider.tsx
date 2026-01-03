@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { browserName } from 'react-device-detect';
 import { ThemedText } from '@theme/text';
@@ -6,10 +6,10 @@ import { colors } from '@theme/colors';
 import { Button } from '@components/common/Button';
 import { Input } from '@components/common/Input';
 import useProviderBuilder from '@hooks/contexts/useProviderBuilder';
-import { PlatformDetails, RequestLog, SampleTransaction } from '@helpers/types/providerBuilder';
+import { PlatformDetails, RequestLog, SampleTransaction, ProviderSettings } from '@helpers/types/providerBuilder';
 import chromeSvg from '../assets/images/browsers/chrome.svg';
 import braveSvg from '../assets/images/browsers/brave.svg';
-import { ChevronRight, CheckCircle, AlertCircle, RefreshCw } from 'react-feather';
+import { CheckCircle, AlertCircle, RefreshCw, Download, Send } from 'react-feather';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 
@@ -73,7 +73,14 @@ const BuildProvider: React.FC = () => {
     discoveryError,
     discoverProvider,
     clearDiscovery,
+    isSubmitting,
+    submissionError,
+    submissionId,
+    submitProvider,
+    clearSubmission,
   } = useProviderBuilder();
+
+  const [templateValidationError, setTemplateValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     refreshExtensionStatus();
@@ -107,6 +114,19 @@ const BuildProvider: React.FC = () => {
       }
     }
   }, [discoveryResult, activeStep]);
+
+  // Advance to step 6 when template is ready
+  useEffect(() => {
+    if (providerTemplate && activeStep === 5) {
+      // Give user time to review before suggesting submission
+      setActiveStep(6);
+    }
+  }, [providerTemplate, activeStep]);
+
+  // Clear validation error when template changes
+  useEffect(() => {
+    setTemplateValidationError(null);
+  }, [providerTemplate]);
 
   const handleInstall = () => {
     window.open(CHROME_EXTENSION_URL, '_blank');
@@ -158,11 +178,99 @@ const BuildProvider: React.FC = () => {
     return 'Low';
   };
 
-  const handleSubmitForReview = () => {
-    // Phase 3: Will submit the provider for review
-    console.log('Submit for review will be implemented in Phase 3');
-    alert('Provider submission will be available in Phase 3');
-  };
+  /**
+   * Validate the provider template JSON
+   * Returns parsed template if valid, null otherwise
+   */
+  const validateTemplate = useCallback((): ProviderSettings | null => {
+    if (!providerTemplate.trim()) {
+      setTemplateValidationError('Template is empty');
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(providerTemplate);
+
+      // Basic validation - check required fields
+      if (!parsed.name) {
+        setTemplateValidationError('Missing required field: name');
+        return null;
+      }
+      if (!parsed.authUrl) {
+        setTemplateValidationError('Missing required field: authUrl');
+        return null;
+      }
+      if (!parsed.hostUrl && !parsed.urlRegex) {
+        setTemplateValidationError('Missing required field: hostUrl or urlRegex');
+        return null;
+      }
+
+      setTemplateValidationError(null);
+      return parsed as ProviderSettings;
+    } catch (e) {
+      setTemplateValidationError('Invalid JSON format');
+      return null;
+    }
+  }, [providerTemplate]);
+
+  /**
+   * Download the template as a JSON file
+   */
+  const handleDownloadJson = useCallback(() => {
+    if (!providerTemplate) return;
+
+    const template = validateTemplate();
+    const filename = template?.name
+      ? `${template.name.toLowerCase().replace(/\s+/g, '_')}_provider.json`
+      : 'provider_template.json';
+
+    const blob = new Blob([providerTemplate], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [providerTemplate, validateTemplate]);
+
+  /**
+   * Submit the provider template for review
+   */
+  const handleSubmitForReview = useCallback(async () => {
+    console.log('Submitting provider for review...');
+
+    // Validate template first
+    const template = validateTemplate();
+    if (!template) {
+      console.log('Template validation failed');
+      return;
+    }
+
+    // Clear any previous submission state
+    clearSubmission();
+
+    // Submit the provider
+    const resultId = await submitProvider(
+      platformDetails.platformName || template.name,
+      template,
+      platformDetails.countryCode || template.countryCode,
+      undefined // submitterAddress - could integrate with wallet connection later
+    );
+
+    if (resultId) {
+      console.log('Submission successful, ID:', resultId);
+    }
+  }, [validateTemplate, platformDetails, submitProvider, clearSubmission]);
+
+  /**
+   * Reset and start over
+   */
+  const handleStartOver = useCallback(() => {
+    clearSubmission();
+    setActiveStep(5);
+  }, [clearSubmission]);
 
   const handlePlatformDetailChange = (field: keyof PlatformDetails, value: string) => {
     setPlatformDetails((prev) => ({
@@ -516,7 +624,7 @@ const BuildProvider: React.FC = () => {
           <Panel $fullWidth>
             <Section>
               <StepIndicator>
-                <StepNumber $active={activeStep === 5} $completed={false}>5</StepNumber>
+                <StepNumber $active={activeStep === 5} $completed={providerTemplate !== ''}>5</StepNumber>
                 <StepLabel>Review & Edit Provider</StepLabel>
               </StepIndicator>
               <ThemedText.BodySecondary>
@@ -533,6 +641,34 @@ const BuildProvider: React.FC = () => {
 }`}
                 disabled={providerTemplate === ''}
               />
+              {templateValidationError && (
+                <ErrorMessage>
+                  <AlertCircle size={14} />
+                  <span>{templateValidationError}</span>
+                </ErrorMessage>
+              )}
+              <ButtonRow>
+                <Button
+                  onClick={handleDownloadJson}
+                  disabled={!providerTemplate}
+                  height={40}
+                  width={160}
+                  bgColor={colors.defaultBorderColor}
+                >
+                  <Download size={14} style={{ marginRight: 6 }} />
+                  Download JSON
+                </Button>
+                <Button
+                  onClick={() => validateTemplate()}
+                  disabled={!providerTemplate}
+                  height={40}
+                  width={140}
+                  bgColor={colors.defaultBorderColor}
+                >
+                  <CheckCircle size={14} style={{ marginRight: 6 }} />
+                  Validate
+                </Button>
+              </ButtonRow>
             </Section>
           </Panel>
 
@@ -540,25 +676,81 @@ const BuildProvider: React.FC = () => {
           <Panel $fullWidth>
             <Section>
               <StepIndicator>
-                <StepNumber $active={activeStep === 6} $completed={false}>6</StepNumber>
-                <StepLabel>Submit</StepLabel>
+                <StepNumber $active={activeStep === 6} $completed={!!submissionId}>6</StepNumber>
+                <StepLabel>Submit for Review</StepLabel>
               </StepIndicator>
-              <ThemedText.BodySecondary>
-                Submit your provider configuration for review by the ZKP2P team.
-              </ThemedText.BodySecondary>
-              <PhaseNote>
-                <ChevronRight size={14} />
-                <span>This feature will be implemented in Phase 3</span>
-              </PhaseNote>
+
+              {/* Submission Success */}
+              {submissionId && (
+                <SuccessMessage>
+                  <CheckCircle size={16} />
+                  <SuccessContent>
+                    <SuccessTitle>Submission Successful!</SuccessTitle>
+                    <SuccessText>
+                      Your provider has been submitted for review. The ZKP2P team will review your submission and get back to you.
+                    </SuccessText>
+                    <SubmissionIdBox>
+                      <SubmissionIdLabel>Submission ID:</SubmissionIdLabel>
+                      <SubmissionIdValue>{submissionId}</SubmissionIdValue>
+                    </SubmissionIdBox>
+                  </SuccessContent>
+                </SuccessMessage>
+              )}
+
+              {/* Submission Error */}
+              {submissionError && !isSubmitting && (
+                <ErrorMessage>
+                  <AlertCircle size={14} />
+                  <span>{submissionError}</span>
+                </ErrorMessage>
+              )}
+
+              {/* Submitting State */}
+              {isSubmitting && (
+                <SubmittingBox>
+                  <RefreshCw size={16} className="spinning" />
+                  <span>Submitting provider for review...</span>
+                </SubmittingBox>
+              )}
+
+              {/* Normal state - not submitted yet */}
+              {!submissionId && !isSubmitting && (
+                <>
+                  <ThemedText.BodySecondary>
+                    Submit your provider configuration for review by the ZKP2P team. Once approved, your provider will be available for use in the ZKP2P extension.
+                  </ThemedText.BodySecondary>
+
+                  {templateValidationError && (
+                    <ErrorMessage>
+                      <AlertCircle size={14} />
+                      <span>{templateValidationError}</span>
+                    </ErrorMessage>
+                  )}
+                </>
+              )}
+
               <ButtonContainer>
-                <Button
-                  onClick={handleSubmitForReview}
-                  disabled={providerTemplate === ''}
-                  height={48}
-                  width={216}
-                >
-                  Submit for Review
-                </Button>
+                {submissionId ? (
+                  <Button
+                    onClick={handleStartOver}
+                    height={48}
+                    width={216}
+                    bgColor={colors.defaultBorderColor}
+                  >
+                    Submit Another Provider
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleSubmitForReview}
+                    disabled={!providerTemplate || isSubmitting}
+                    loading={isSubmitting}
+                    height={48}
+                    width={216}
+                  >
+                    <Send size={14} style={{ marginRight: 8 }} />
+                    Submit for Review
+                  </Button>
+                )}
               </ButtonContainer>
             </Section>
           </Panel>
@@ -783,17 +975,6 @@ const RequestStatus = styled.span`
   text-align: right;
 `;
 
-const PhaseNote = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 15px;
-  background: rgba(255, 193, 7, 0.1);
-  border: 1px solid rgba(255, 193, 7, 0.3);
-  border-radius: 8px;
-  color: ${colors.warningYellow};
-  font-size: 13px;
-`;
 
 const TemplateEditor = styled.textarea`
   width: 100%;
@@ -1042,6 +1223,85 @@ const DiscoveryDebugInfo = styled.div`
       border-radius: 50%;
       margin-left: 12px;
     }
+  }
+`;
+
+// Submission UI Styled Components
+const SuccessMessage = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  border-radius: 8px;
+  color: ${colors.connectionStatusGreen};
+
+  svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+`;
+
+const SuccessContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+`;
+
+const SuccessTitle = styled.span`
+  font-weight: 600;
+  font-size: 15px;
+  color: ${colors.connectionStatusGreen};
+`;
+
+const SuccessText = styled.span`
+  font-size: 14px;
+  color: ${colors.grayText};
+  line-height: 1.5;
+`;
+
+const SubmissionIdBox = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  margin-top: 4px;
+`;
+
+const SubmissionIdLabel = styled.span`
+  font-size: 12px;
+  color: ${colors.grayText};
+`;
+
+const SubmissionIdValue = styled.span`
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  color: ${colors.white};
+  word-break: break-all;
+`;
+
+const SubmittingBox = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+  background: rgba(33, 150, 243, 0.1);
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  border-radius: 8px;
+  color: #2196F3;
+  font-size: 14px;
+
+  .spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 `;
 

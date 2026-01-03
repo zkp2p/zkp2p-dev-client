@@ -174,9 +174,52 @@ export interface ExtractionRule {
 }
 
 /**
- * Submission data for provider review
+ * Response from the presigned URL endpoint
+ */
+export interface PresignedUrlResponse {
+  uploadUrl: string;           // Presigned S3 PUT URL (expires in 15 min)
+  submissionId: string;        // UUID for this submission
+  objectKey: string;           // S3 object key: submissions/{date}/{id}.json
+}
+
+/**
+ * Status of a provider submission
+ */
+export type SubmissionStatus = 'pending' | 'approved' | 'rejected' | 'needs_revision';
+
+/**
+ * Discovery metadata included in submission
+ */
+export interface SubmissionDiscoveryMetadata {
+  confidence: number;
+  sampleTransactions: SampleTransaction[];
+  candidateEndpoints: string[];
+  llmCallCount: number;
+  totalLatencyMs: number;
+}
+
+/**
+ * Provider submission payload uploaded to S3
+ * Matches the format defined in the Provider Builder plan
  */
 export interface ProviderSubmission {
+  id: string;                      // Submission UUID
+  submittedAt: string;             // ISO 8601
+  submittedBy?: string;            // Optional wallet address
+
+  platform: string;
+  countryCode?: string;
+
+  providerTemplate: ProviderSettings;
+
+  discovery: SubmissionDiscoveryMetadata;
+}
+
+/**
+ * Legacy submission data for provider review (deprecated)
+ * @deprecated Use ProviderSubmission instead
+ */
+export interface LegacyProviderSubmission {
   platformName: string;
   authUrl: string;
   countryCode?: string;
@@ -184,7 +227,7 @@ export interface ProviderSubmission {
   capturedRequests: RequestLog[];
   submittedAt: number;
   submittedBy?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: SubmissionStatus;
 }
 
 /**

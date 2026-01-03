@@ -1,6 +1,6 @@
 import { createContext } from 'react';
 
-import { RequestLog, CaptureStatus, DiscoveryOptions, DiscoveryResult } from '@helpers/types/providerBuilder';
+import { RequestLog, CaptureStatus, DiscoveryOptions, DiscoveryResult, ProviderSettings } from '@helpers/types/providerBuilder';
 
 interface ProviderBuilderValues {
   // Extension connection status
@@ -17,6 +17,11 @@ interface ProviderBuilderValues {
   isDiscovering: boolean;
   discoveryError: string | null;
 
+  // Submission state
+  isSubmitting: boolean;
+  submissionError: string | null;
+  submissionId: string | null;
+
   // Capture actions
   startCapture: () => Promise<void>;
   stopCapture: () => Promise<RequestLog[]>;
@@ -25,6 +30,15 @@ interface ProviderBuilderValues {
   // Discovery actions
   discoverProvider: (options: DiscoveryOptions) => Promise<DiscoveryResult | null>;
   clearDiscovery: () => void;
+
+  // Submission actions
+  submitProvider: (
+    platform: string,
+    providerTemplate: ProviderSettings,
+    countryCode?: string,
+    submitterAddress?: string
+  ) => Promise<string | null>;
+  clearSubmission: () => void;
 
   // Refresh extension status
   refreshExtensionStatus: () => void;
@@ -49,12 +63,19 @@ const defaultValues: ProviderBuilderValues = {
   isDiscovering: false,
   discoveryError: null,
 
+  isSubmitting: false,
+  submissionError: null,
+  submissionId: null,
+
   startCapture: async () => {},
   stopCapture: async () => [],
   clearCapture: () => {},
 
   discoverProvider: async () => null,
   clearDiscovery: () => {},
+
+  submitProvider: async () => null,
+  clearSubmission: () => {},
 
   refreshExtensionStatus: () => {},
 };
