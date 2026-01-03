@@ -34,6 +34,37 @@ export type ExtensionRequestMetadataMessage = {
   }
 };
 
+export type ExtensionDiscoveryStatusMessage = {
+  origin: string;
+  data: {
+    type: string;
+    status: string;
+    sessionId?: string;
+    error?: string;
+  };
+};
+
+export type ExtensionDiscoveryDraft = {
+  providerSettings: Record<string, unknown>;
+  evidence: {
+    requests: Record<string, unknown>[];
+    responses: Record<string, unknown>[];
+    domSnapshots?: string[];
+  };
+  confidence: number;
+  warnings?: string[];
+};
+
+export type ExtensionDiscoveryDraftMessage = {
+  origin: string;
+  data: {
+    type: string;
+    status: string;
+    draft?: ExtensionDiscoveryDraft;
+    error?: string;
+  };
+};
+
 export type ExtensionRequestMetadata = {
   recipient?: string;
   amount?: string;
@@ -69,6 +100,9 @@ export const ExtensionPostMessage = {
   GENERATE_PROOF: "generate_proof",
   OPEN_SIDEBAR: "open_sidebar",
   FETCH_PROVIDER_BASE_URL: "fetch_provider_base_url",
+  START_DISCOVERY_SESSION: "start_discovery_session",
+  STOP_DISCOVERY_SESSION: "stop_discovery_session",
+  FETCH_DISCOVERY_DRAFT: "fetch_discovery_draft",
 };
 
 export const ExtensionReceiveMessage = {
@@ -77,4 +111,6 @@ export const ExtensionReceiveMessage = {
   FETCH_PROOF_BY_ID_RESPONSE: "fetch_proof_by_id_response",
   FETCH_PROOF_REQUEST_ID_RESPONSE: "fetch_proof_request_id_response",
   FETCH_PROVIDER_BASE_URL_RESPONSE: 'fetch_provider_base_url_response',
+  DISCOVERY_STATUS_RESPONSE: "discovery_status_response",
+  DISCOVERY_DRAFT_RESPONSE: "discovery_draft_response",
 };

@@ -15,6 +15,9 @@ export type {
   ExtensionEventMessage,
   ExtensionEventVersionMessage,
   ExtensionRequestMetadataMessage,
+  ExtensionDiscoveryStatusMessage,
+  ExtensionDiscoveryDraftMessage,
+  ExtensionDiscoveryDraft,
   ExtensionRequestMetadata,
   ExtensionNotaryProofRequest,
 } from './browserExtension'

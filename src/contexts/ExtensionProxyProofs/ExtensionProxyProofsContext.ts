@@ -1,6 +1,10 @@
 import { createContext } from 'react';
 
-import { ExtensionNotaryProofRequest, ExtensionRequestMetadata } from '@helpers/types';
+import {
+  ExtensionDiscoveryDraft,
+  ExtensionNotaryProofRequest,
+  ExtensionRequestMetadata,
+} from '@helpers/types';
 
 export interface MetadataInfo {
   metadata: ExtensionRequestMetadata[] | null;
@@ -20,6 +24,15 @@ interface ExtensionProxyProofsValues {
   generatePaymentProof: (platform: string, intentHash: string, originalIndex: number, proofIndex?: number) => void;
   fetchPaymentProof: (platform: string) => void;
   resetProofState: () => void;
+
+  discoveryStatus: 'idle' | 'started' | 'stopped' | 'error';
+  discoverySessionId: string | null;
+  discoveryDraft: ExtensionDiscoveryDraft | null;
+  discoveryError: string | null;
+  startDiscoverySession: (args: { platform: string; actionType: string }) => void;
+  stopDiscoverySession: () => void;
+  fetchDiscoveryDraft: () => void;
+  resetDiscoveryState: () => void;
 };
 
 const defaultValues: ExtensionProxyProofsValues = {
@@ -35,6 +48,15 @@ const defaultValues: ExtensionProxyProofsValues = {
   generatePaymentProof: (_platform: string, _intentHash: string, _originalIndex: number, _proofIndex?: number) => { },
   fetchPaymentProof: (_platform: string) => { },
   resetProofState: () => { },
+
+  discoveryStatus: 'idle',
+  discoverySessionId: null,
+  discoveryDraft: null,
+  discoveryError: null,
+  startDiscoverySession: (_args: { platform: string; actionType: string }) => { },
+  stopDiscoverySession: () => { },
+  fetchDiscoveryDraft: () => { },
+  resetDiscoveryState: () => { },
 };
 
 const ExtensionProxyProofsContext = createContext<ExtensionProxyProofsValues>(defaultValues);
