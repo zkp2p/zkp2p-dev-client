@@ -6,9 +6,11 @@ import {
 } from "react-router-dom";
 
 import { Home } from "./pages/Home";
+import { BuildProvider } from "./pages/BuildProvider";
 import { TopNav } from '@components/layouts/TopNav';
 
 import ExtensionProxyProofsProvider from './contexts/ExtensionProxyProofs/ExtensionProxyProofsProvider';
+import ProviderBuilderProvider from './contexts/ProviderBuilder/ProviderBuilderProvider';
 
 import "./App.css";
 import "./styles.css";
@@ -26,6 +28,7 @@ const App = () => {
           <div className="app-content">
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/build-provider" element={<BuildProvider />} />
               <Route element={<>Not found</>} />
             </Routes>
           </div>
@@ -63,6 +66,7 @@ export const buildProvidersTree = (
 
 const providersWithProps: ProvidersType[] = [
   [ExtensionProxyProofsProvider, {}],
+  [ProviderBuilderProvider, {}],
 ];
 
 const ProviderTree = buildProvidersTree(providersWithProps);
