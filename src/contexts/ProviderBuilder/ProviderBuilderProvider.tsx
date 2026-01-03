@@ -1,8 +1,17 @@
 import React, { useEffect, useState, ReactNode, useCallback, useRef } from 'react';
 
-import { RequestLog, CaptureStatus } from '@helpers/types/providerBuilder';
+import { RequestLog, CaptureStatus, DiscoveryOptions, DiscoveryResult } from '@helpers/types/providerBuilder';
 
 import ProviderBuilderContext from './ProviderBuilderContext';
+
+// Extend Window interface to include peer API
+declare global {
+  interface Window {
+    peer?: {
+      discoverProvider?: (options: DiscoveryOptions) => Promise<DiscoveryResult>;
+    };
+  }
+}
 
 // Message types for extension communication
 const ProviderBuilderPostMessage = {
@@ -38,6 +47,11 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
     requestCount: 0,
     error: null,
   });
+
+  // Discovery state
+  const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
+  const [isDiscovering, setIsDiscovering] = useState<boolean>(false);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const stopCaptureResolveRef = useRef<((requests: RequestLog[]) => void) | null>(null);
@@ -92,6 +106,53 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
 
     window.postMessage({ type: ProviderBuilderPostMessage.CLEAR_CAPTURE }, '*');
     console.log('ProviderBuilder: Posted Message:', ProviderBuilderPostMessage.CLEAR_CAPTURE);
+  }, []);
+
+  /*
+   * Discovery Functions
+   */
+
+  const discoverProvider = useCallback(async (options: DiscoveryOptions): Promise<DiscoveryResult | null> => {
+    console.log('ProviderBuilder: Starting discovery with options:', options);
+
+    // Check if extension API is available
+    if (!window.peer?.discoverProvider) {
+      const errorMsg = 'Discovery API not available. Please update the ZKP2P extension.';
+      console.error('ProviderBuilder:', errorMsg);
+      setDiscoveryError(errorMsg);
+      return null;
+    }
+
+    setIsDiscovering(true);
+    setDiscoveryError(null);
+    setDiscoveryResult(null);
+
+    try {
+      const result = await window.peer.discoverProvider(options);
+      console.log('ProviderBuilder: Discovery result:', result);
+
+      setDiscoveryResult(result);
+
+      if (!result.success) {
+        const errorMsg = result.error || 'Discovery failed without error message';
+        setDiscoveryError(errorMsg);
+      }
+
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown discovery error';
+      console.error('ProviderBuilder: Discovery error:', errorMsg);
+      setDiscoveryError(errorMsg);
+      return null;
+    } finally {
+      setIsDiscovering(false);
+    }
+  }, []);
+
+  const clearDiscovery = useCallback(() => {
+    setDiscoveryResult(null);
+    setDiscoveryError(null);
+    setIsDiscovering(false);
   }, []);
 
   /*
@@ -242,9 +303,16 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
         capturedRequests,
         isCapturing: captureStatus.isCapturing,
 
+        discoveryResult,
+        isDiscovering,
+        discoveryError,
+
         startCapture,
         stopCapture,
         clearCapture,
+
+        discoverProvider,
+        clearDiscovery,
 
         refreshExtensionStatus,
       }}

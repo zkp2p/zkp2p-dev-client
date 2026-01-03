@@ -6,10 +6,10 @@ import { colors } from '@theme/colors';
 import { Button } from '@components/common/Button';
 import { Input } from '@components/common/Input';
 import useProviderBuilder from '@hooks/contexts/useProviderBuilder';
-import { PlatformDetails, ProviderTemplate, RequestLog } from '@helpers/types/providerBuilder';
+import { PlatformDetails, RequestLog, SampleTransaction } from '@helpers/types/providerBuilder';
 import chromeSvg from '../assets/images/browsers/chrome.svg';
 import braveSvg from '../assets/images/browsers/brave.svg';
-import { ChevronRight } from 'react-feather';
+import { ChevronRight, CheckCircle, AlertCircle, RefreshCw } from 'react-feather';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 
@@ -68,6 +68,11 @@ const BuildProvider: React.FC = () => {
     startCapture,
     stopCapture,
     clearCapture,
+    discoveryResult,
+    isDiscovering,
+    discoveryError,
+    discoverProvider,
+    clearDiscovery,
   } = useProviderBuilder();
 
   useEffect(() => {
@@ -93,6 +98,16 @@ const BuildProvider: React.FC = () => {
     }
   }, [capturedRequests, isCapturing, activeStep]);
 
+  // Auto-populate template when discovery succeeds
+  useEffect(() => {
+    if (discoveryResult?.success && discoveryResult.providerTemplate) {
+      setProviderTemplate(JSON.stringify(discoveryResult.providerTemplate, null, 2));
+      if (activeStep < 5) {
+        setActiveStep(5);
+      }
+    }
+  }, [discoveryResult, activeStep]);
+
   const handleInstall = () => {
     window.open(CHROME_EXTENSION_URL, '_blank');
     setIsInstallClicked(true);
@@ -111,20 +126,36 @@ const BuildProvider: React.FC = () => {
     clearCapture();
   };
 
-  const handleRunDiscovery = () => {
-    // Phase 2: Will run the discovery agent
-    console.log('Discovery agent will be implemented in Phase 2');
+  const handleRunDiscovery = async () => {
+    console.log('Running discovery agent...');
 
-    // For now, create a placeholder template
-    const placeholderTemplate: ProviderTemplate = {
-      name: platformDetails.platformName,
+    const result = await discoverProvider({
+      platformName: platformDetails.platformName,
       authUrl: platformDetails.authUrl,
       countryCode: platformDetails.countryCode || undefined,
-      endpoints: [],
-      extractionRules: [],
-    };
-    setProviderTemplate(JSON.stringify(placeholderTemplate, null, 2));
-    setActiveStep(5);
+    });
+
+    if (result?.success && result.providerTemplate) {
+      setProviderTemplate(JSON.stringify(result.providerTemplate, null, 2));
+      setActiveStep(5);
+    }
+  };
+
+  const handleRerunDiscovery = () => {
+    clearDiscovery();
+    handleRunDiscovery();
+  };
+
+  const getConfidenceColor = (confidence: number): string => {
+    if (confidence >= 0.8) return colors.connectionStatusGreen;
+    if (confidence >= 0.5) return colors.warningYellow;
+    return '#FF3B30';
+  };
+
+  const getConfidenceLabel = (confidence: number): string => {
+    if (confidence >= 0.8) return 'High';
+    if (confidence >= 0.5) return 'Medium';
+    return 'Low';
   };
 
   const handleSubmitForReview = () => {
@@ -148,6 +179,7 @@ const BuildProvider: React.FC = () => {
   const isStep1Complete = isExtensionConnected;
   const isStep2Complete = platformDetails.platformName.trim() !== '' && platformDetails.authUrl.trim() !== '';
   const isStep3Complete = capturedRequests.length > 0 && !isCapturing;
+  const isStep4Complete = discoveryResult?.success === true;
 
   return (
     <PageWrapper>
@@ -308,26 +340,175 @@ const BuildProvider: React.FC = () => {
           <Panel>
             <Section>
               <StepIndicator>
-                <StepNumber $active={activeStep === 4} $completed={providerTemplate !== ''}>4</StepNumber>
+                <StepNumber $active={activeStep === 4} $completed={isStep4Complete}>4</StepNumber>
                 <StepLabel>Discover Provider</StepLabel>
               </StepIndicator>
               <ThemedText.BodySecondary>
                 Run the discovery agent to automatically analyze captured traffic and generate a provider template.
               </ThemedText.BodySecondary>
-              <PhaseNote>
-                <ChevronRight size={14} />
-                <span>This feature will be implemented in Phase 2</span>
-              </PhaseNote>
-              <ButtonContainer>
+
+              {/* Discovery Status */}
+              {isDiscovering && (
+                <DiscoveryStatusBox>
+                  <RefreshCw size={16} className="spinning" />
+                  <span>Analyzing captured traffic...</span>
+                </DiscoveryStatusBox>
+              )}
+
+              {/* Discovery Error */}
+              {discoveryError && !isDiscovering && (
+                <ErrorMessage>
+                  <AlertCircle size={14} />
+                  <span>{discoveryError}</span>
+                </ErrorMessage>
+              )}
+
+              {/* Discovery Result */}
+              {discoveryResult && !isDiscovering && (
+                <DiscoveryResultContainer>
+                  {/* Success/Failure Header */}
+                  <DiscoveryResultHeader $success={discoveryResult.success}>
+                    {discoveryResult.success ? (
+                      <>
+                        <CheckCircle size={16} />
+                        <span>Discovery Successful</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle size={16} />
+                        <span>Discovery Failed</span>
+                      </>
+                    )}
+                  </DiscoveryResultHeader>
+
+                  {/* Confidence Score */}
+                  <DiscoveryResultItem>
+                    <DiscoveryResultLabel>Confidence:</DiscoveryResultLabel>
+                    <ConfidenceBadge $color={getConfidenceColor(discoveryResult.confidence)}>
+                      {getConfidenceLabel(discoveryResult.confidence)} ({Math.round(discoveryResult.confidence * 100)}%)
+                    </ConfidenceBadge>
+                  </DiscoveryResultItem>
+
+                  {/* Endpoint Info */}
+                  {discoveryResult.endpoint && (
+                    <DiscoverySection>
+                      <DiscoverySectionTitle>Discovered Endpoint</DiscoverySectionTitle>
+                      <DiscoveryResultItem>
+                        <DiscoveryResultLabel>URL:</DiscoveryResultLabel>
+                        <DiscoveryResultValue $truncate>{discoveryResult.endpoint.url}</DiscoveryResultValue>
+                      </DiscoveryResultItem>
+                      <DiscoveryResultItem>
+                        <DiscoveryResultLabel>Method:</DiscoveryResultLabel>
+                        <RequestMethod $method={discoveryResult.endpoint.method}>
+                          {discoveryResult.endpoint.method}
+                        </RequestMethod>
+                      </DiscoveryResultItem>
+                      <DiscoveryResultItem>
+                        <DiscoveryResultLabel>URL Pattern:</DiscoveryResultLabel>
+                        <DiscoveryResultValue $truncate $mono>{discoveryResult.endpoint.urlRegex}</DiscoveryResultValue>
+                      </DiscoveryResultItem>
+                    </DiscoverySection>
+                  )}
+
+                  {/* Field Mappings */}
+                  {discoveryResult.structure && (
+                    <DiscoverySection>
+                      <DiscoverySectionTitle>Field Mappings</DiscoverySectionTitle>
+                      <DiscoveryResultItem>
+                        <DiscoveryResultLabel>Transaction Array:</DiscoveryResultLabel>
+                        <DiscoveryResultValue $mono>{discoveryResult.structure.transactionArrayPath}</DiscoveryResultValue>
+                      </DiscoveryResultItem>
+                      <FieldMappingGrid>
+                        <FieldMappingItem>
+                          <FieldMappingLabel>Amount</FieldMappingLabel>
+                          <FieldMappingValue>{discoveryResult.structure.fields.amount}</FieldMappingValue>
+                        </FieldMappingItem>
+                        <FieldMappingItem>
+                          <FieldMappingLabel>Recipient</FieldMappingLabel>
+                          <FieldMappingValue>{discoveryResult.structure.fields.recipient}</FieldMappingValue>
+                        </FieldMappingItem>
+                        <FieldMappingItem>
+                          <FieldMappingLabel>Date</FieldMappingLabel>
+                          <FieldMappingValue>{discoveryResult.structure.fields.date}</FieldMappingValue>
+                        </FieldMappingItem>
+                        <FieldMappingItem>
+                          <FieldMappingLabel>Payment ID</FieldMappingLabel>
+                          <FieldMappingValue>{discoveryResult.structure.fields.paymentId}</FieldMappingValue>
+                        </FieldMappingItem>
+                        {discoveryResult.structure.fields.currency && (
+                          <FieldMappingItem>
+                            <FieldMappingLabel>Currency</FieldMappingLabel>
+                            <FieldMappingValue>{discoveryResult.structure.fields.currency}</FieldMappingValue>
+                          </FieldMappingItem>
+                        )}
+                      </FieldMappingGrid>
+                    </DiscoverySection>
+                  )}
+
+                  {/* Sample Transactions */}
+                  {discoveryResult.sampleTransactions && discoveryResult.sampleTransactions.length > 0 && (
+                    <DiscoverySection>
+                      <DiscoverySectionTitle>Sample Transactions ({discoveryResult.sampleTransactions.length})</DiscoverySectionTitle>
+                      <SampleTransactionsList>
+                        {discoveryResult.sampleTransactions.slice(0, 3).map((tx: SampleTransaction, idx: number) => (
+                          <SampleTransactionItem key={idx}>
+                            <SampleTxField>
+                              <SampleTxLabel>Amount:</SampleTxLabel>
+                              <SampleTxValue>{tx.amount} {tx.currency || ''}</SampleTxValue>
+                            </SampleTxField>
+                            <SampleTxField>
+                              <SampleTxLabel>Recipient:</SampleTxLabel>
+                              <SampleTxValue>{tx.recipient}</SampleTxValue>
+                            </SampleTxField>
+                            <SampleTxField>
+                              <SampleTxLabel>Date:</SampleTxLabel>
+                              <SampleTxValue>{tx.date}</SampleTxValue>
+                            </SampleTxField>
+                            <SampleTxField>
+                              <SampleTxLabel>ID:</SampleTxLabel>
+                              <SampleTxValue $mono>{tx.paymentId}</SampleTxValue>
+                            </SampleTxField>
+                          </SampleTransactionItem>
+                        ))}
+                      </SampleTransactionsList>
+                    </DiscoverySection>
+                  )}
+
+                  {/* Debug Info */}
+                  {discoveryResult.debug && (
+                    <DiscoveryDebugInfo>
+                      <span>Analyzed {discoveryResult.debug.analyzedRequests} requests</span>
+                      <span>Found {discoveryResult.debug.candidateEndpoints} candidates</span>
+                      <span>{discoveryResult.debug.llmCalls} LLM calls</span>
+                      <span>{discoveryResult.debug.totalLatencyMs}ms</span>
+                    </DiscoveryDebugInfo>
+                  )}
+                </DiscoveryResultContainer>
+              )}
+
+              <ButtonRow>
                 <Button
                   onClick={handleRunDiscovery}
-                  disabled={!isStep3Complete}
+                  disabled={!isStep3Complete || isDiscovering}
+                  loading={isDiscovering}
                   height={48}
-                  width={216}
+                  width={180}
                 >
-                  Run Discovery Agent
+                  {discoveryResult ? 'Run Discovery' : 'Run Discovery Agent'}
                 </Button>
-              </ButtonContainer>
+                {(discoveryError || (discoveryResult && discoveryResult.confidence < 0.5)) && (
+                  <Button
+                    onClick={handleRerunDiscovery}
+                    disabled={isDiscovering}
+                    height={48}
+                    width={140}
+                    bgColor={colors.defaultBorderColor}
+                  >
+                    <RefreshCw size={14} style={{ marginRight: 6 }} />
+                    Re-run
+                  </Button>
+                )}
+              </ButtonRow>
             </Section>
           </Panel>
 
@@ -498,6 +679,9 @@ const ButtonRow = styled.div`
 `;
 
 const ErrorMessage = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 10px;
   background: rgba(255, 59, 48, 0.1);
   border: 1px solid rgba(255, 59, 48, 0.3);
@@ -651,6 +835,213 @@ const TemplateEditor = styled.textarea`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
+  }
+`;
+
+// Discovery UI Styled Components
+const DiscoveryStatusBox = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+  background: rgba(33, 150, 243, 0.1);
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  border-radius: 8px;
+  color: #2196F3;
+  font-size: 14px;
+
+  .spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`;
+
+const DiscoveryResultContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 8px;
+`;
+
+const DiscoveryResultHeader = styled.div<{ $success: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: ${({ $success }) => $success ? colors.connectionStatusGreen : '#FF3B30'};
+`;
+
+const DiscoveryResultItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
+
+const DiscoveryResultLabel = styled.span`
+  font-size: 13px;
+  color: ${colors.grayText};
+  min-width: 80px;
+`;
+
+const DiscoveryResultValue = styled.span<{ $truncate?: boolean; $mono?: boolean }>`
+  font-size: 13px;
+  color: ${colors.white};
+  ${({ $mono }) => $mono && `
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+  `}
+  ${({ $truncate }) => $truncate && `
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+  `}
+`;
+
+const ConfidenceBadge = styled.span<{ $color: string }>`
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: ${({ $color }) => `${$color}20`};
+  color: ${({ $color }) => $color};
+`;
+
+const DiscoverySection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid ${colors.defaultBorderColor};
+`;
+
+const DiscoverySectionTitle = styled.div`
+  font-size: 13px;
+  font-weight: 600;
+  color: ${colors.white};
+  margin-bottom: 4px;
+`;
+
+const FieldMappingGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+`;
+
+const FieldMappingItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+`;
+
+const FieldMappingLabel = styled.span`
+  font-size: 11px;
+  color: ${colors.grayText};
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`;
+
+const FieldMappingValue = styled.span`
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  color: ${colors.white};
+  word-break: break-all;
+`;
+
+const SampleTransactionsList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+  }
+`;
+
+const SampleTransactionItem = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: 6px;
+`;
+
+const SampleTxField = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+`;
+
+const SampleTxLabel = styled.span`
+  font-size: 10px;
+  color: ${colors.grayText};
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`;
+
+const SampleTxValue = styled.span<{ $mono?: boolean }>`
+  font-size: 12px;
+  color: ${colors.white};
+  word-break: break-all;
+  ${({ $mono }) => $mono && `
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 11px;
+  `}
+`;
+
+const DiscoveryDebugInfo = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid ${colors.defaultBorderColor};
+  font-size: 11px;
+  color: ${colors.grayText};
+
+  span {
+    display: inline-flex;
+    align-items: center;
+
+    &:not(:last-child)::after {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      background: ${colors.defaultBorderColor};
+      border-radius: 50%;
+      margin-left: 12px;
+    }
   }
 `;
 
