@@ -42,6 +42,7 @@ const BuildProvider: React.FC = () => {
         agentVersion: '0.1.0',
         samples: discoveryDraft.evidence.responses.length,
         status: discoveryDraft.confidence >= 0.7 ? 'ready_for_review' : 'needs_manual_review',
+        autoApproveEligible: discoveryDraft.confidence >= 0.85,
         warnings: discoveryDraft.warnings,
       },
       provider: discoveryDraft.providerSettings,
@@ -194,6 +195,9 @@ const BuildProvider: React.FC = () => {
                     <Badge $tone={discoveryDraft.confidence >= 0.7 ? 'good' : 'warn'}>
                       {discoveryDraft.confidence >= 0.7 ? 'Ready for review' : 'Needs manual review'}
                     </Badge>
+                    {discoveryDraft.confidence >= 0.85 && (
+                      <Badge $tone="good">Auto‑approve eligible</Badge>
+                    )}
                   </ConfidenceRow>
                 )}
                 {discoveryDraft?.warnings?.length ? (
