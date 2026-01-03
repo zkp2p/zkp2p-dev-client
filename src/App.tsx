@@ -6,6 +6,7 @@ import {
 } from "react-router-dom";
 
 import { Home } from "./pages/Home";
+import BuildProvider from "./pages/BuildProvider";
 import { TopNav } from '@components/layouts/TopNav';
 
 import ExtensionProxyProofsProvider from './contexts/ExtensionProxyProofs/ExtensionProxyProofsProvider';
@@ -26,6 +27,7 @@ const App = () => {
           <div className="app-content">
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/build-provider" element={<BuildProvider />} />
               <Route element={<>Not found</>} />
             </Routes>
           </div>

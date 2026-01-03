@@ -7,6 +7,9 @@ import {
   ExtensionPostMessage,
   ExtensionReceiveMessage,
   ExtensionRequestMetadataMessage,
+  ExtensionDiscoveryStatusMessage,
+  ExtensionDiscoveryDraftMessage,
+  ExtensionDiscoveryDraft,
 } from '@helpers/types';
 
 import ExtensionProxyProofsContext, { MetadataInfo } from './ExtensionProxyProofsContext';
@@ -33,6 +36,11 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
 
   const [platformMetadata, setPlatformMetadata] = useState<Record<string, MetadataInfo>>({} as Record<string, MetadataInfo>);
 
+  const [discoveryStatus, setDiscoveryStatus] = useState<'idle' | 'started' | 'stopped' | 'error'>('idle');
+  const [discoverySessionId, setDiscoverySessionId] = useState<string | null>(null);
+  const [discoveryDraft, setDiscoveryDraft] = useState<ExtensionDiscoveryDraft | null>(null);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   //
@@ -54,6 +62,29 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     window.postMessage({ type: ExtensionPostMessage.OPEN_SIDEBAR, route }, '*');
 
     console.log('Posted Message: ', ExtensionPostMessage.OPEN_SIDEBAR, route);
+  };
+
+  const startDiscoverySession = (args: { platform: string; actionType: string }) => {
+    setDiscoveryStatus('started');
+    setDiscoveryError(null);
+    setDiscoveryDraft(null);
+
+    window.postMessage(
+      { type: ExtensionPostMessage.START_DISCOVERY_SESSION, ...args },
+      '*',
+    );
+
+    console.log('Posted Message: ', ExtensionPostMessage.START_DISCOVERY_SESSION, args);
+  };
+
+  const stopDiscoverySession = () => {
+    window.postMessage({ type: ExtensionPostMessage.STOP_DISCOVERY_SESSION }, '*');
+    console.log('Posted Message: ', ExtensionPostMessage.STOP_DISCOVERY_SESSION);
+  };
+
+  const fetchDiscoveryDraft = () => {
+    window.postMessage({ type: ExtensionPostMessage.FETCH_DISCOVERY_DRAFT }, '*');
+    console.log('Posted Message: ', ExtensionPostMessage.FETCH_DISCOVERY_DRAFT);
   };
 
   /*
@@ -154,6 +185,54 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     }
   }, []);
 
+  const handleExtensionDiscoveryStatusMessageReceived = useCallback(
+    function (event: ExtensionDiscoveryStatusMessage) {
+      console.log('Client received DISCOVERY_STATUS_RESPONSE message');
+      console.log('event.data', event.data);
+
+      const status = event.data.status;
+      const sessionId = event.data.sessionId;
+      const error = event.data.error;
+
+      if (status === 'error') {
+        setDiscoveryStatus('error');
+        setDiscoveryError(error || 'Discovery error');
+        return;
+      }
+
+      if (status === 'started') {
+        setDiscoveryStatus('started');
+        setDiscoverySessionId(sessionId || null);
+        setDiscoveryError(null);
+        return;
+      }
+
+      if (status === 'stopped') {
+        setDiscoveryStatus('stopped');
+        return;
+      }
+    },
+    [],
+  );
+
+  const handleExtensionDiscoveryDraftMessageReceived = useCallback(
+    function (event: ExtensionDiscoveryDraftMessage) {
+      console.log('Client received DISCOVERY_DRAFT_RESPONSE message');
+      console.log('event.data', event.data);
+
+      if (event.data.status === 'error') {
+        setDiscoveryError(event.data.error || 'Failed to fetch discovery draft');
+        setDiscoveryDraft(null);
+        return;
+      }
+
+      if (event.data.draft) {
+        setDiscoveryDraft(event.data.draft);
+      }
+    },
+    [],
+  );
+
   const handleExtensionMessage = useCallback(function(event: any) {
     if (event.origin !== window.location.origin) {
       return;
@@ -174,11 +253,21 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     if (event.data.type && event.data.type === ExtensionReceiveMessage.FETCH_PROOF_BY_ID_RESPONSE) {
       handleExtensionProofByIdMessageReceived(event);
     };
+
+    if (event.data.type && event.data.type === ExtensionReceiveMessage.DISCOVERY_STATUS_RESPONSE) {
+      handleExtensionDiscoveryStatusMessageReceived(event);
+    };
+
+    if (event.data.type && event.data.type === ExtensionReceiveMessage.DISCOVERY_DRAFT_RESPONSE) {
+      handleExtensionDiscoveryDraftMessageReceived(event);
+    };
   }, [
     handleExtensionVersionMessageReceived,
     handleExtensionMetadataMessagesResponse,
     handleExtensionProofIdMessageReceived,
     handleExtensionProofByIdMessageReceived,
+    handleExtensionDiscoveryStatusMessageReceived,
+    handleExtensionDiscoveryDraftMessageReceived,
   ]);
 
   
@@ -233,6 +322,20 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
         generatePaymentProof,
         fetchPaymentProof,
         resetProofState,
+
+        discoveryStatus,
+        discoverySessionId,
+        discoveryDraft,
+        discoveryError,
+        startDiscoverySession,
+        stopDiscoverySession,
+        fetchDiscoveryDraft,
+        resetDiscoveryState: () => {
+          setDiscoveryStatus('idle');
+          setDiscoverySessionId(null);
+          setDiscoveryDraft(null);
+          setDiscoveryError(null);
+        },
       }}
     >
       {children}

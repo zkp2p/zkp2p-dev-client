@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import styled from "styled-components";
 
 import useMediaQuery from "@hooks/useMediaQuery";
@@ -14,6 +14,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
 
   const currentDeviceSize = useMediaQuery();
   const { navigateWithQuery } = useQuery();
+  const location = useLocation();
 
   /*
    * Component
@@ -52,6 +53,15 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
               </Logo>
               <DevBadge>Developer</DevBadge>
             </LogoContainer>
+            <NavLinks>
+              <NavLink to="/" $active={location.pathname === '/'}>Proof Flow</NavLink>
+              <NavLink
+                to="/build-provider"
+                $active={location.pathname === '/build-provider'}
+              >
+                Build Provider
+              </NavLink>
+            </NavLinks>
           </LogoAndNavItems>
         )}
       </NavBar>
@@ -89,6 +99,15 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
               </Logo>
               <DevBadge>Developer</DevBadge>
             </LogoContainer>
+            <NavLinks>
+              <NavLink to="/" $active={location.pathname === '/'}>Proof Flow</NavLink>
+              <NavLink
+                to="/build-provider"
+                $active={location.pathname === '/build-provider'}
+              >
+                Build Provider
+              </NavLink>
+            </NavLinks>
           </LogoAndNavItems>
         )}
       </NavBar>
@@ -136,6 +155,25 @@ const LogoAndNavItems = styled.div`
   display: flex;
   align-items: center;
   gap: 2rem;
+`;
+
+const NavLinks = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+`;
+
+const NavLink = styled(Link)<{ $active?: boolean }>`
+  color: ${({ $active }) => ($active ? colors.white : colors.lightGrayText)};
+  text-decoration: none;
+  font-weight: 600;
+  border-bottom: ${({ $active }) => ($active ? `2px solid ${colors.white}` : '2px solid transparent')};
+  padding-bottom: 4px;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: ${colors.white};
+  }
 `;
 
 const LogoContainer = styled.div`
