@@ -21,11 +21,33 @@ const BuildProvider: React.FC = () => {
 
   const [platform, setPlatform] = useState('');
   const [actionType, setActionType] = useState('');
+  const [submissionId] = useState(() => `sub_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
+  const [uploadUrl, setUploadUrl] = useState('');
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
   const draftJson = useMemo(() => {
     if (!discoveryDraft) return '';
     return JSON.stringify(discoveryDraft.providerSettings, null, 2);
   }, [discoveryDraft]);
+
+  const draftBundle = useMemo(() => {
+    if (!discoveryDraft) return null;
+    return {
+      manifest: {
+        submissionId,
+        platform,
+        actionType,
+        createdAt: new Date().toISOString(),
+        extensionVersion: sideBarVersion,
+        agentVersion: '0.1.0',
+        samples: discoveryDraft.evidence.responses.length,
+        warnings: discoveryDraft.warnings,
+      },
+      provider: discoveryDraft.providerSettings,
+      evidence: discoveryDraft.evidence,
+      confidence: discoveryDraft.confidence,
+    };
+  }, [discoveryDraft, submissionId, platform, actionType, sideBarVersion]);
 
   const handleStart = () => {
     if (!platform || !actionType) {
@@ -33,6 +55,44 @@ const BuildProvider: React.FC = () => {
       return;
     }
     startDiscoverySession({ platform, actionType });
+  };
+
+  const handleDownloadBundle = () => {
+    if (!draftBundle) return;
+    const blob = new Blob([JSON.stringify(draftBundle, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${submissionId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleUpload = async () => {
+    if (!draftBundle) return;
+    if (!uploadUrl) {
+      setUploadStatus('Missing upload URL');
+      return;
+    }
+    setUploadStatus('Uploading...');
+    try {
+      const res = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(draftBundle),
+      });
+      if (!res.ok) {
+        setUploadStatus(`Upload failed (${res.status})`);
+        return;
+      }
+      setUploadStatus('Upload complete');
+    } catch (error) {
+      setUploadStatus(`Upload failed: ${String(error)}`);
+    }
   };
 
   return (
@@ -127,6 +187,11 @@ const BuildProvider: React.FC = () => {
               <DraftContainer>
                 <ThemedText.BodySecondary>ProviderSettings Preview</ThemedText.BodySecondary>
                 <DraftTextarea readOnly value={draftJson} />
+                <ButtonRow>
+                  <Button onClick={handleDownloadBundle} height={40} width={200}>
+                    Download Bundle
+                  </Button>
+                </ButtonRow>
               </DraftContainer>
             )}
           </Step>
@@ -137,11 +202,21 @@ const BuildProvider: React.FC = () => {
               <StepLabel>Submit Draft</StepLabel>
             </StepHeader>
             <ThemedText.BodySecondary>
-              Upload is configured in Phase 3. For now, copy the draft JSON and share with the team.
+              Paste a pre-signed S3 upload URL to submit your discovery bundle.
             </ThemedText.BodySecondary>
-            <Button disabled height={44} width={200}>
-              Upload to S3 (coming soon)
-            </Button>
+            <Input
+              label="Pre-signed S3 Upload URL"
+              name="uploadUrl"
+              value={uploadUrl}
+              onChange={(e) => setUploadUrl(e.target.value)}
+              valueFontSize="14px"
+            />
+            <ButtonRow>
+              <Button onClick={handleUpload} height={44} width={200} disabled={!draftBundle}>
+                Upload to S3
+              </Button>
+              {uploadStatus && <StatusValue>{uploadStatus}</StatusValue>}
+            </ButtonRow>
           </Step>
         </Panel>
       </MainContent>
