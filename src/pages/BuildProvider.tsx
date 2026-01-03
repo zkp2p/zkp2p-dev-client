@@ -41,6 +41,7 @@ const BuildProvider: React.FC = () => {
         extensionVersion: sideBarVersion,
         agentVersion: '0.1.0',
         samples: discoveryDraft.evidence.responses.length,
+        status: discoveryDraft.confidence >= 0.7 ? 'ready_for_review' : 'needs_manual_review',
         warnings: discoveryDraft.warnings,
       },
       provider: discoveryDraft.providerSettings,
@@ -186,6 +187,22 @@ const BuildProvider: React.FC = () => {
             {draftJson && (
               <DraftContainer>
                 <ThemedText.BodySecondary>ProviderSettings Preview</ThemedText.BodySecondary>
+                {discoveryDraft && (
+                  <ConfidenceRow>
+                    <StatusLabel>Confidence:</StatusLabel>
+                    <StatusValue>{discoveryDraft.confidence}</StatusValue>
+                    <Badge $tone={discoveryDraft.confidence >= 0.7 ? 'good' : 'warn'}>
+                      {discoveryDraft.confidence >= 0.7 ? 'Ready for review' : 'Needs manual review'}
+                    </Badge>
+                  </ConfidenceRow>
+                )}
+                {discoveryDraft?.warnings?.length ? (
+                  <WarningsList>
+                    {discoveryDraft.warnings.map((warning, index) => (
+                      <li key={`${warning}-${index}`}>{warning}</li>
+                    ))}
+                  </WarningsList>
+                ) : null}
                 <DraftTextarea readOnly value={draftJson} />
                 <ButtonRow>
                   <Button onClick={handleDownloadBundle} height={40} width={200}>
@@ -325,6 +342,28 @@ const DraftTextarea = styled.textarea`
   border-radius: 8px;
   padding: 12px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  font-size: 12px;
+`;
+
+const ConfidenceRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const Badge = styled.span<{ $tone: 'good' | 'warn' }>`
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: ${colors.white};
+  background: ${({ $tone }) => ($tone === 'good' ? colors.validGreen : colors.warningYellow)};
+`;
+
+const WarningsList = styled.ul`
+  margin: 0;
+  padding-left: 18px;
+  color: ${colors.warningYellow};
   font-size: 12px;
 `;
 
