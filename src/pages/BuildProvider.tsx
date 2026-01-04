@@ -9,7 +9,7 @@ import useProviderBuilder from '@hooks/contexts/useProviderBuilder';
 import { PlatformDetails, RequestLog, SampleTransaction, ProviderSettings } from '@helpers/types/providerBuilder';
 import chromeSvg from '../assets/images/browsers/chrome.svg';
 import braveSvg from '../assets/images/browsers/brave.svg';
-import { CheckCircle, AlertCircle, RefreshCw, Download, Send } from 'react-feather';
+import { CheckCircle, AlertCircle, RefreshCw, Download, Upload, Send } from 'react-feather';
 
 const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
 
@@ -68,6 +68,8 @@ const BuildProvider: React.FC = () => {
     startCapture,
     stopCapture,
     clearCapture,
+    exportCapturedRequests,
+    importCapturedRequests,
     discoveryResult,
     isDiscovering,
     discoveryError,
@@ -79,6 +81,9 @@ const BuildProvider: React.FC = () => {
     submitProvider,
     clearSubmission,
   } = useProviderBuilder();
+
+  // Ref for file input
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [templateValidationError, setTemplateValidationError] = useState<string | null>(null);
 
@@ -144,6 +149,61 @@ const BuildProvider: React.FC = () => {
 
   const handleClearCapture = () => {
     clearCapture();
+  };
+
+  const handleDownloadCapturedRequests = async () => {
+    const requests = await exportCapturedRequests();
+    if (requests.length === 0) {
+      console.log('No captured requests to download');
+      return;
+    }
+
+    const filename = platformDetails.platformName
+      ? `${platformDetails.platformName.toLowerCase().replace(/\s+/g, '_')}_captured_requests.json`
+      : 'captured_requests.json';
+
+    const blob = new Blob([JSON.stringify(requests, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    console.log(`Downloaded ${requests.length} captured requests`);
+  };
+
+  const handleUploadCapturedRequests = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const requests = JSON.parse(text) as RequestLog[];
+
+      if (!Array.isArray(requests)) {
+        console.error('Invalid file format: expected an array of requests');
+        return;
+      }
+
+      const result = await importCapturedRequests(requests);
+      if (result.success) {
+        console.log(`Imported ${result.count} captured requests`);
+        if (activeStep < 4) {
+          setActiveStep(4);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to parse captured requests file:', error);
+    }
+
+    // Reset the file input
+    event.target.value = '';
   };
 
   const handleRunDiscovery = async () => {
@@ -398,6 +458,14 @@ const BuildProvider: React.FC = () => {
               {captureStatus.error && (
                 <ErrorMessage>{captureStatus.error}</ErrorMessage>
               )}
+              {/* Hidden file input for upload */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".json"
+                style={{ display: 'none' }}
+              />
               <ButtonRow>
                 <Button
                   onClick={handleStartCapture}
@@ -423,6 +491,28 @@ const BuildProvider: React.FC = () => {
                   bgColor={colors.defaultBorderColor}
                 >
                   Clear
+                </Button>
+              </ButtonRow>
+              <ButtonRow>
+                <Button
+                  onClick={handleDownloadCapturedRequests}
+                  disabled={capturedRequests.length === 0}
+                  height={40}
+                  width={160}
+                  bgColor={colors.defaultBorderColor}
+                >
+                  <Download size={14} style={{ marginRight: 6 }} />
+                  Export JSON
+                </Button>
+                <Button
+                  onClick={handleUploadCapturedRequests}
+                  disabled={!isExtensionConnected}
+                  height={40}
+                  width={160}
+                  bgColor={colors.defaultBorderColor}
+                >
+                  <Upload size={14} style={{ marginRight: 6 }} />
+                  Import JSON
                 </Button>
               </ButtonRow>
               {capturedRequests.length > 0 && (
@@ -586,8 +676,12 @@ const BuildProvider: React.FC = () => {
                   {discoveryResult.debug && (
                     <DiscoveryDebugInfo>
                       <span>Analyzed {discoveryResult.debug.analyzedRequests} requests</span>
-                      <span>Found {discoveryResult.debug.candidateEndpoints} candidates</span>
-                      <span>{discoveryResult.debug.llmCalls} LLM calls</span>
+                      <span>Found {typeof discoveryResult.debug.candidateEndpoints === 'number'
+                        ? discoveryResult.debug.candidateEndpoints
+                        : (discoveryResult.debug.candidateEndpoints as unknown[])?.length ?? 0} candidates</span>
+                      <span>{typeof discoveryResult.debug.llmCalls === 'number'
+                        ? discoveryResult.debug.llmCalls
+                        : (discoveryResult.debug.llmCalls as unknown[])?.length ?? 0} LLM calls</span>
                       <span>{discoveryResult.debug.totalLatencyMs}ms</span>
                     </DiscoveryDebugInfo>
                   )}
@@ -828,6 +922,8 @@ const Panel = styled.div<{ $fullWidth?: boolean }>`
   border: 1px solid ${colors.defaultBorderColor};
   background: ${colors.container};
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  min-width: 0;
 
   ${({ $fullWidth }) => $fullWidth && `
     grid-column: 1 / -1;
@@ -887,6 +983,8 @@ const RequestList = styled.div`
   border-radius: 8px;
   overflow: hidden;
   margin-top: 10px;
+  max-width: 100%;
+  width: 100%;
 `;
 
 const RequestListHeader = styled.div`
@@ -898,6 +996,7 @@ const RequestListHeader = styled.div`
 const RequestListContent = styled.div`
   max-height: 200px;
   overflow-y: auto;
+  overflow-x: hidden;
 
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
@@ -922,6 +1021,8 @@ const RequestItem = styled.div`
   gap: 10px;
   padding: 8px 15px;
   border-bottom: 1px solid ${colors.defaultBorderColor};
+  max-width: 100%;
+  overflow: hidden;
 
   &:last-child {
     border-bottom: none;
@@ -961,6 +1062,7 @@ const RequestMethod = styled.span<{ $method: string }>`
 
 const RequestUrl = styled.span`
   flex: 1;
+  min-width: 0;
   font-size: 12px;
   color: ${colors.grayText};
   white-space: nowrap;

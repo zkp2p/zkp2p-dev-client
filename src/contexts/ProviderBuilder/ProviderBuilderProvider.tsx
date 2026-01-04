@@ -10,24 +10,26 @@ declare global {
   interface Window {
     peer?: {
       discoverProvider?: (options: DiscoveryOptions) => Promise<DiscoveryResult>;
+      exportCapturedRequests?: () => Promise<RequestLog[]>;
+      importCapturedRequests?: (requests: RequestLog[]) => Promise<{ success: boolean; count: number }>;
     };
   }
 }
 
 // Message types for extension communication
+// These must match the extension's PageToContentAction and ContentToPageAction types
 const ProviderBuilderPostMessage = {
   FETCH_EXTENSION_VERSION: 'fetch_extension_version',
-  START_CAPTURE: 'provider_builder_start_capture',
-  STOP_CAPTURE: 'provider_builder_stop_capture',
-  CLEAR_CAPTURE: 'provider_builder_clear_capture',
+  START_CAPTURE: 'start_provider_capture',
+  STOP_CAPTURE: 'stop_provider_capture',
+  GET_CAPTURE_STATUS: 'get_capture_status',
 };
 
 const ProviderBuilderReceiveMessage = {
   EXTENSION_VERSION_RESPONSE: 'extension_version_response',
-  CAPTURE_STARTED: 'provider_builder_capture_started',
-  CAPTURE_STOPPED: 'provider_builder_capture_stopped',
-  CAPTURE_REQUEST: 'provider_builder_capture_request',
-  CAPTURE_ERROR: 'provider_builder_capture_error',
+  CAPTURE_STARTED: 'provider_capture_started',
+  CAPTURE_STOPPED: 'provider_capture_stopped',
+  CAPTURE_STATUS: 'capture_status_response',
 };
 
 interface ProvidersProps {
@@ -109,9 +111,59 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
       requestCount: 0,
       error: null,
     });
+    console.log('ProviderBuilder: Cleared capture state');
+  }, []);
 
-    window.postMessage({ type: ProviderBuilderPostMessage.CLEAR_CAPTURE }, '*');
-    console.log('ProviderBuilder: Posted Message:', ProviderBuilderPostMessage.CLEAR_CAPTURE);
+  /*
+   * Import/Export Functions
+   */
+
+  const exportCapturedRequests = useCallback(async (): Promise<RequestLog[]> => {
+    console.log('ProviderBuilder: Exporting captured requests');
+
+    // Check if extension API is available
+    if (!window.peer?.exportCapturedRequests) {
+      console.error('ProviderBuilder: Export API not available. Please update the ZKP2P extension.');
+      return [];
+    }
+
+    try {
+      const requests = await window.peer.exportCapturedRequests();
+      console.log('ProviderBuilder: Exported', requests.length, 'requests');
+      return requests;
+    } catch (error) {
+      console.error('ProviderBuilder: Export error:', error);
+      return [];
+    }
+  }, []);
+
+  const importCapturedRequests = useCallback(async (requests: RequestLog[]): Promise<{ success: boolean; count: number }> => {
+    console.log('ProviderBuilder: Importing', requests.length, 'requests');
+
+    // Check if extension API is available
+    if (!window.peer?.importCapturedRequests) {
+      console.error('ProviderBuilder: Import API not available. Please update the ZKP2P extension.');
+      return { success: false, count: 0 };
+    }
+
+    try {
+      const result = await window.peer.importCapturedRequests(requests);
+      console.log('ProviderBuilder: Import result:', result);
+
+      if (result.success) {
+        // Update local state with imported requests
+        setCapturedRequests(requests);
+        setCaptureStatus(prev => ({
+          ...prev,
+          requestCount: requests.length,
+        }));
+      }
+
+      return result;
+    } catch (error) {
+      console.error('ProviderBuilder: Import error:', error);
+      return { success: false, count: 0 };
+    }
   }, []);
 
   /*
@@ -274,26 +326,6 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
     }
   }, []);
 
-  const handleCaptureRequest = useCallback((event: MessageEvent) => {
-    const request = event.data.request as RequestLog;
-    if (request) {
-      console.log('ProviderBuilder: Captured request:', request.url);
-      setCapturedRequests((prev) => [...prev, request]);
-      setCaptureStatus((prev) => ({
-        ...prev,
-        requestCount: prev.requestCount + 1,
-      }));
-    }
-  }, []);
-
-  const handleCaptureError = useCallback((event: MessageEvent) => {
-    console.error('ProviderBuilder: Capture error:', event.data.error);
-    setCaptureStatus((prev) => ({
-      ...prev,
-      isCapturing: false,
-      error: event.data.error || 'Unknown capture error',
-    }));
-  }, []);
 
   const handleExtensionMessage = useCallback(
     (event: MessageEvent) => {
@@ -314,21 +346,11 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
       if (messageType === ProviderBuilderReceiveMessage.CAPTURE_STOPPED) {
         handleCaptureStopped(event);
       }
-
-      if (messageType === ProviderBuilderReceiveMessage.CAPTURE_REQUEST) {
-        handleCaptureRequest(event);
-      }
-
-      if (messageType === ProviderBuilderReceiveMessage.CAPTURE_ERROR) {
-        handleCaptureError(event);
-      }
     },
     [
       handleExtensionVersionResponse,
       handleCaptureStarted,
       handleCaptureStopped,
-      handleCaptureRequest,
-      handleCaptureError,
     ]
   );
 
@@ -387,6 +409,9 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
         startCapture,
         stopCapture,
         clearCapture,
+
+        exportCapturedRequests,
+        importCapturedRequests,
 
         discoverProvider,
         clearDiscovery,

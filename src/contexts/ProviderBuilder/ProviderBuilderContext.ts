@@ -27,6 +27,10 @@ interface ProviderBuilderValues {
   stopCapture: () => Promise<RequestLog[]>;
   clearCapture: () => void;
 
+  // Import/Export actions
+  exportCapturedRequests: () => Promise<RequestLog[]>;
+  importCapturedRequests: (requests: RequestLog[]) => Promise<{ success: boolean; count: number }>;
+
   // Discovery actions
   discoverProvider: (options: DiscoveryOptions) => Promise<DiscoveryResult | null>;
   clearDiscovery: () => void;
@@ -70,6 +74,9 @@ const defaultValues: ProviderBuilderValues = {
   startCapture: async () => {},
   stopCapture: async () => [],
   clearCapture: () => {},
+
+  exportCapturedRequests: async () => [],
+  importCapturedRequests: async () => ({ success: false, count: 0 }),
 
   discoverProvider: async () => null,
   clearDiscovery: () => {},
