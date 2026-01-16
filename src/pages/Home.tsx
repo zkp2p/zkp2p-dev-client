@@ -13,7 +13,6 @@ import { AccessoryButton } from '@components/common/AccessoryButton';
 import Spinner from '@components/common/Spinner';
 import { ChevronRight } from 'react-feather';
 import { ethers } from 'ethers';
-import { unifiedVerifierAbi } from '../abis/UnifiedVerifierAbi';
 import { keccak256 } from '@helpers/keccack';
 import { getDefaultVerifier, fetchIntentDetails, normalizeHex32, hexToDecimal } from '@helpers/contracts';
 
@@ -127,6 +126,7 @@ const Home: React.FC = () => {
   const [fetchIntentLoading, setFetchIntentLoading] = useState(false);
   const [fetchIntentError, setFetchIntentError] = useState<string | null>(null);
   const [paymentMethodHex, setPaymentMethodHex] = useState<string>('');
+  const [postIntentHookData, setPostIntentHookData] = useState<string>('0x');
 
   // No localStorage persistence; inputs always reflect actual defaults or user edits
 
@@ -385,29 +385,44 @@ const Home: React.FC = () => {
   const addToBrowserText = () =>
     browserName === 'Brave' ? 'Add to Brave' : 'Add to Chrome';
 
-  // Helper: strict encoding of PaymentAttestation (no fallbacks)
-  const encodePaymentAttestation = (attestationResponse: any) => {
+  const encodePaymentAttestation = (attestationResponse: any, intentHashFallback?: string) => {
     const abi = new ethers.utils.AbiCoder();
-    const resp = attestationResponse.responseObject;
-    const td = resp.typedDataValue;
+    const resp = attestationResponse.responseObject ?? attestationResponse;
+    const td = resp.typedDataValue || resp.typedData || {};
+    const signatures: string[] = Array.isArray(resp.signatures)
+      ? resp.signatures
+      : (resp.signature ? [resp.signature] : []);
 
-    const intentHash: string = td.intentHash;
-    const releaseAmount = ethers.BigNumber.from(td.releaseAmount);
-    const dataHash: string = td.dataHash;
-    const signatures: string[] = [resp.signature];
+    const rawIntentHash = td.intentHash || intentHashFallback;
+    if (!rawIntentHash) {
+      throw new Error('Attestation response missing intent hash');
+    }
+    const intentHash = normalizeHex32(rawIntentHash);
+    const releaseAmount = td.releaseAmount ?? resp.releaseAmount;
+    const dataHash: string = td.dataHash ?? resp.dataHash;
     const encodedPaymentDetails: string = resp.encodedPaymentDetails;
+    const metadata: string = resp.metadata || td.metadata || '0x';
 
-    if (!intentHash || !releaseAmount || !dataHash || !encodedPaymentDetails) {
+    if (releaseAmount == null || !dataHash || !encodedPaymentDetails) {
       throw new Error('Attestation response missing required fields');
     }
 
     return abi.encode(
       ['tuple(bytes32,uint256,bytes32,bytes[],bytes,bytes)'],
-      [[intentHash, releaseAmount, dataHash, signatures, encodedPaymentDetails, '0x']]
+      [[intentHash, ethers.BigNumber.from(releaseAmount), dataHash, signatures, encodedPaymentDetails, metadata]]
     );
   };
 
-  // Function to generate calldata for verifyPayment (strict, no fallbacks)
+  const resolveVerificationData = (respObj: any) => {
+    if (respObj?.verificationData) return respObj.verificationData;
+    const signer = respObj?.signer || respObj?.attestorAddress || respObj?.attestor;
+    if (!signer) {
+      throw new Error('Attestation response missing verification data');
+    }
+    return ethers.utils.defaultAbiCoder.encode(['address'], [signer]);
+  };
+
+  // Function to generate fulfillIntent params
   const handleGenerateCalldata = () => {
     try {
       setCalldataError(null);
@@ -416,33 +431,31 @@ const Home: React.FC = () => {
       // Validate required inputs
       if (!attestationResponse) throw new Error('Please generate an attestation first');
 
-      // Parse attestation response (strict fields only)
+      // Parse attestation response
       const parsedAttestation = JSON.parse(attestationResponse);
-      const respObj = parsedAttestation.responseObject;
-      const td = respObj.typedDataValue;
+      const respObj = parsedAttestation.responseObject ?? parsedAttestation;
+      const td = respObj.typedDataValue || respObj.typedData || {};
 
-      const attestorAddress = respObj.signer;
-      const attestationData = ethers.utils.defaultAbiCoder.encode(['address'], [attestorAddress]);
+      const rawIntentHash = td.intentHash || verifyIntentHash;
+      if (!rawIntentHash) {
+        throw new Error('Missing intent hash for fulfillIntent params');
+      }
+      const intentHashHex = normalizeHex32(rawIntentHash);
 
-      // Encode PaymentAttestation as bytes using the strict encoder
-      const encodedPaymentProof = encodePaymentAttestation(parsedAttestation);
+      const paymentProof = encodePaymentAttestation(parsedAttestation, intentHashHex);
+      const verificationData = resolveVerificationData(respObj);
+      const postIntentHookDataHex = postIntentHookData?.trim() ? postIntentHookData : '0x';
 
-      // Intent hash comes from typedDataValue
-      const intentHashHex = td.intentHash;
-
-      // Create VerifyPaymentData struct for the verifier
-      const verifyPaymentData = {
+      const fulfillIntentParams = {
+        paymentProof,
         intentHash: intentHashHex,
-        paymentProof: encodedPaymentProof,
-        data: attestationData,
-      } as const;
+        verificationData,
+        postIntentHookData: postIntentHookDataHex,
+      };
 
-      const verifierInterface = new ethers.utils.Interface(unifiedVerifierAbi);
-      const calldata = verifierInterface.encodeFunctionData('verifyPayment', [verifyPaymentData]);
-
-      setGeneratedCalldata(calldata);
+      setGeneratedCalldata(JSON.stringify(fulfillIntentParams, null, 2));
     } catch (error) {
-      console.error('Error generating calldata:', error);
+      console.error('Error generating fulfillIntent params:', error);
       setCalldataError(error instanceof Error ? error.message : 'Unknown error');
     }
   };
@@ -759,7 +772,7 @@ const Home: React.FC = () => {
           <Section>
             <StepIndicator>
               <StepNumber>4</StepNumber>
-              <StepLabel>Verify zkTLS Proof & Generate Calldata</StepLabel>
+              <StepLabel>Verify zkTLS Proof & Generate FulfillIntent Params</StepLabel>
             </StepIndicator>
 
             
@@ -888,6 +901,14 @@ const Home: React.FC = () => {
                               valueFontSize="12px"
                               placeholder="0x16b3e4a3CA36D3A4bCA281767f15C7ADeF4ab163"
                             />
+                            <Input
+                              label="Post Intent Hook Data (bytes)"
+                              name="postIntentHookData"
+                              value={postIntentHookData}
+                              onChange={(e) => setPostIntentHookData(e.target.value)}
+                              valueFontSize="12px"
+                              placeholder="0x"
+                            />
                           </CalldataInputsGrid>
                         </CalldataInputsContainer>
                       </AdvancedContent>
@@ -911,7 +932,7 @@ const Home: React.FC = () => {
                         width={216}
                         disabled={!attestationResponse}
                       >
-                        Generate Calldata
+                        Generate Params
                       </Button>
                     </div>
                   </ButtonContainer>
@@ -941,12 +962,12 @@ const Home: React.FC = () => {
                       {generatedCalldata && (
                         <>
                           <ThemedText.BodySecondary>
-                            ✅ Calldata generated successfully:
+                            ✅ FulfillIntent params generated successfully:
                           </ThemedText.BodySecondary>
                           <CalldataTextArea
                             readOnly
                             value={generatedCalldata}
-                            placeholder="Generated calldata will appear here"
+                            placeholder="Generated fulfillIntent params will appear here"
                           />
                         </>
                       )}
