@@ -34,15 +34,40 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
   const [platformMetadata, setPlatformMetadata] = useState<Record<string, MetadataInfo>>({} as Record<string, MetadataInfo>);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const initialCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const frequentChecksIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const switchToNormalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   //
   // EXTENSION POST MESSAGES
   //
 
-  const refetchExtensionVersion = () => {
+  const refetchExtensionVersion = useCallback(() => {
     window.postMessage({ type: ExtensionPostMessage.FETCH_EXTENSION_VERSION }, '*');
     console.log('Posted Message: ', ExtensionPostMessage.FETCH_EXTENSION_VERSION);
-  };
+  }, []);
+
+  const clearVersionPollingTimers = useCallback(() => {
+    if (initialCheckTimeoutRef.current) {
+      clearTimeout(initialCheckTimeoutRef.current);
+      initialCheckTimeoutRef.current = null;
+    }
+
+    if (frequentChecksIntervalRef.current) {
+      clearInterval(frequentChecksIntervalRef.current);
+      frequentChecksIntervalRef.current = null;
+    }
+
+    if (switchToNormalTimeoutRef.current) {
+      clearTimeout(switchToNormalTimeoutRef.current);
+      switchToNormalTimeoutRef.current = null;
+    }
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
 
   const openNewTab = (actionType: string, platform: string) => {
     window.postMessage({ type: ExtensionPostMessage.OPEN_NEW_TAB, actionType, platform }, '*');
@@ -110,13 +135,8 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
 
     setSideBarVersion(version);
     setIsSidebarInstalled(true);
-
-    // Clear the interval once we receive the version
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
+    clearVersionPollingTimers();
+  }, [clearVersionPollingTimers]);
 
   const handleExtensionMetadataMessagesResponse = useCallback(function(event: ExtensionRequestMetadataMessage) {
     console.log('Client received METADATA_MESSAGES_RESPONSE message');
@@ -192,17 +212,20 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     window.addEventListener("message", handleExtensionMessage);
     
     // Small initial delay to give extension time to initialize
-    const initialCheckTimeout = setTimeout(() => {
+    initialCheckTimeoutRef.current = setTimeout(() => {
       refetchExtensionVersion();
       
       // Start with more frequent checks initially, then switch to 5s interval
-      const initialFrequentChecks = setInterval(() => {
+      frequentChecksIntervalRef.current = setInterval(() => {
         refetchExtensionVersion();
       }, 500); // Check every 500ms initially
       
       // After 2 seconds of frequent checks, switch to normal interval
-      setTimeout(() => {
-        clearInterval(initialFrequentChecks);
+      switchToNormalTimeoutRef.current = setTimeout(() => {
+        if (frequentChecksIntervalRef.current) {
+          clearInterval(frequentChecksIntervalRef.current);
+          frequentChecksIntervalRef.current = null;
+        }
         intervalRef.current = setInterval(refetchExtensionVersion, 5000);
       }, 2000);
       
@@ -210,13 +233,9 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
 
     return () => {
       window.removeEventListener("message", handleExtensionMessage);
-      clearTimeout(initialCheckTimeout);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      clearVersionPollingTimers();
     };
-  }, [handleExtensionMessage]);
+  }, [clearVersionPollingTimers, handleExtensionMessage, refetchExtensionVersion]);
 
   return (
     <ExtensionProxyProofsContext.Provider
