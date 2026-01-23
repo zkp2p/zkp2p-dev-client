@@ -62,6 +62,9 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
   const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const initialCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const frequentChecksRef = useRef<NodeJS.Timeout | null>(null);
+  const slowIntervalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const stopCaptureResolveRef = useRef<((requests: RequestLog[]) => void) | null>(null);
 
   /*
@@ -284,6 +287,28 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
    * Message Handlers
    */
 
+  const clearPollingTimers = useCallback(() => {
+    if (initialCheckTimeoutRef.current) {
+      clearTimeout(initialCheckTimeoutRef.current);
+      initialCheckTimeoutRef.current = null;
+    }
+
+    if (slowIntervalTimeoutRef.current) {
+      clearTimeout(slowIntervalTimeoutRef.current);
+      slowIntervalTimeoutRef.current = null;
+    }
+
+    if (frequentChecksRef.current) {
+      clearInterval(frequentChecksRef.current);
+      frequentChecksRef.current = null;
+    }
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
   const handleExtensionVersionResponse = useCallback((event: MessageEvent) => {
     console.log('ProviderBuilder: Received EXTENSION_VERSION_RESPONSE');
     const version = event.data.version;
@@ -291,12 +316,8 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
     setExtensionVersion(version);
     setIsExtensionConnected(true);
 
-    // Clear the interval once we receive the version
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
+    clearPollingTimers();
+  }, [clearPollingTimers]);
 
   const handleCaptureStarted = useCallback(() => {
     console.log('ProviderBuilder: Capture started');
@@ -363,30 +384,29 @@ const ProviderBuilderProvider = ({ children }: ProvidersProps) => {
     window.addEventListener('message', handleExtensionMessage);
 
     // Initial delay to give extension time to initialize
-    const initialCheckTimeout = setTimeout(() => {
+    initialCheckTimeoutRef.current = setTimeout(() => {
       refreshExtensionStatus();
 
       // Start with frequent checks initially
-      const initialFrequentChecks = setInterval(() => {
+      frequentChecksRef.current = setInterval(() => {
         refreshExtensionStatus();
       }, 500);
 
       // After 2 seconds, switch to less frequent interval
-      setTimeout(() => {
-        clearInterval(initialFrequentChecks);
+      slowIntervalTimeoutRef.current = setTimeout(() => {
+        if (frequentChecksRef.current) {
+          clearInterval(frequentChecksRef.current);
+          frequentChecksRef.current = null;
+        }
         intervalRef.current = setInterval(refreshExtensionStatus, 5000);
       }, 2000);
     }, 100);
 
     return () => {
       window.removeEventListener('message', handleExtensionMessage);
-      clearTimeout(initialCheckTimeout);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      clearPollingTimers();
     };
-  }, [handleExtensionMessage, refreshExtensionStatus]);
+  }, [clearPollingTimers, handleExtensionMessage, refreshExtensionStatus]);
 
   return (
     <ProviderBuilderContext.Provider

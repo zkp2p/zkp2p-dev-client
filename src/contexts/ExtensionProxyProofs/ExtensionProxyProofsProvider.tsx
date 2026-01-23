@@ -34,15 +34,40 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
   const [platformMetadata, setPlatformMetadata] = useState<Record<string, MetadataInfo>>({} as Record<string, MetadataInfo>);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const initialCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const frequentChecksRef = useRef<NodeJS.Timeout | null>(null);
+  const slowIntervalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   //
   // EXTENSION POST MESSAGES
   //
 
-  const refetchExtensionVersion = () => {
+  const clearPollingTimers = useCallback(() => {
+    if (initialCheckTimeoutRef.current) {
+      clearTimeout(initialCheckTimeoutRef.current);
+      initialCheckTimeoutRef.current = null;
+    }
+
+    if (slowIntervalTimeoutRef.current) {
+      clearTimeout(slowIntervalTimeoutRef.current);
+      slowIntervalTimeoutRef.current = null;
+    }
+
+    if (frequentChecksRef.current) {
+      clearInterval(frequentChecksRef.current);
+      frequentChecksRef.current = null;
+    }
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  const refetchExtensionVersion = useCallback(() => {
     window.postMessage({ type: ExtensionPostMessage.FETCH_EXTENSION_VERSION }, '*');
     console.log('Posted Message: ', ExtensionPostMessage.FETCH_EXTENSION_VERSION);
-  };
+  }, []);
 
   const openNewTab = (actionType: string, platform: string) => {
     window.postMessage({ type: ExtensionPostMessage.OPEN_NEW_TAB, actionType, platform }, '*');
@@ -111,12 +136,8 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     setSideBarVersion(version);
     setIsSidebarInstalled(true);
 
-    // Clear the interval once we receive the version
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
+    clearPollingTimers();
+  }, [clearPollingTimers]);
 
   const handleExtensionMetadataMessagesResponse = useCallback(function(event: ExtensionRequestMetadataMessage) {
     console.log('Client received METADATA_MESSAGES_RESPONSE message');
@@ -190,33 +211,32 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
   useEffect(() => {
     // Set up the event listener first
     window.addEventListener("message", handleExtensionMessage);
-    
+
     // Small initial delay to give extension time to initialize
-    const initialCheckTimeout = setTimeout(() => {
+    initialCheckTimeoutRef.current = setTimeout(() => {
       refetchExtensionVersion();
-      
+
       // Start with more frequent checks initially, then switch to 5s interval
-      const initialFrequentChecks = setInterval(() => {
+      frequentChecksRef.current = setInterval(() => {
         refetchExtensionVersion();
       }, 500); // Check every 500ms initially
-      
+
       // After 2 seconds of frequent checks, switch to normal interval
-      setTimeout(() => {
-        clearInterval(initialFrequentChecks);
+      slowIntervalTimeoutRef.current = setTimeout(() => {
+        if (frequentChecksRef.current) {
+          clearInterval(frequentChecksRef.current);
+          frequentChecksRef.current = null;
+        }
         intervalRef.current = setInterval(refetchExtensionVersion, 5000);
       }, 2000);
-      
+
     }, 100); // Small delay before first check
 
     return () => {
       window.removeEventListener("message", handleExtensionMessage);
-      clearTimeout(initialCheckTimeout);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      clearPollingTimers();
     };
-  }, [handleExtensionMessage]);
+  }, [clearPollingTimers, handleExtensionMessage, refetchExtensionVersion]);
 
   return (
     <ExtensionProxyProofsContext.Provider
