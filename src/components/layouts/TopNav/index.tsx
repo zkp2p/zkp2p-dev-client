@@ -41,8 +41,8 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
         ) : (
           <LogoAndNavItems>
             <LogoContainer>
-              <Logo 
-                to="/" 
+              <Logo
+                to="/"
                 onClick={(e) => {
                   e.preventDefault();
                   navigateWithQuery('/');
@@ -52,6 +52,26 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
               </Logo>
               <DevBadge>Developer</DevBadge>
             </LogoContainer>
+            <NavLinks>
+              <NavLink
+                to="/"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithQuery('/');
+                }}
+              >
+                Home
+              </NavLink>
+              <NavLink
+                to="/build-provider"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithQuery('/build-provider');
+                }}
+              >
+                Build Provider
+              </NavLink>
+            </NavLinks>
           </LogoAndNavItems>
         )}
       </NavBar>
@@ -62,9 +82,9 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
         {withoutLinks ? (
           <NavBarCentered>
             <LogoContainer>
-              <Logo 
-                size={48} 
-                to="/" 
+              <Logo
+                size={48}
+                to="/"
                 onClick={(e) => {
                   e.preventDefault();
                   navigateWithQuery('/');
@@ -78,8 +98,8 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
         ) : (
           <LogoAndNavItems>
             <LogoContainer>
-              <Logo 
-                to="/" 
+              <Logo
+                to="/"
                 onClick={(e) => {
                   e.preventDefault();
                   navigateWithQuery('/');
@@ -89,6 +109,26 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
               </Logo>
               <DevBadge>Developer</DevBadge>
             </LogoContainer>
+            <NavLinks>
+              <NavLink
+                to="/"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithQuery('/');
+                }}
+              >
+                Home
+              </NavLink>
+              <NavLink
+                to="/build-provider"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithQuery('/build-provider');
+                }}
+              >
+                Build Provider
+              </NavLink>
+            </NavLinks>
           </LogoAndNavItems>
         )}
       </NavBar>
@@ -154,4 +194,35 @@ const DevBadge = styled.div`
   margin-left: 8px;
   position: relative;
   top: -2px;
+`;
+
+const NavLinks = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-left: 2rem;
+
+  @media (max-width: 600px) {
+    gap: 1rem;
+    margin-left: 1rem;
+  }
+`;
+
+const NavLink = styled(Link)`
+  color: ${colors.grayText};
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: color 0.2s ease, background 0.2s ease;
+
+  &:hover {
+    color: ${colors.white};
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  &.active {
+    color: ${colors.white};
+  }
 `;
