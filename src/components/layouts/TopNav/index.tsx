@@ -23,6 +23,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
 
   const currentDeviceSize = useMediaQuery();
   const { navigateWithQuery } = useQuery();
+  const logoSrc = `${process.env.PUBLIC_URL || ''}/peer-logo.svg`;
 
   /*
    * Component
@@ -43,7 +44,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                 }}
               >
                 <img
-                  src={`${process.env.PUBLIC_URL}/logo512.png`}
+                  src={logoSrc}
                   alt="Peer logo"
                   width={48}
                   height={48}
@@ -63,7 +64,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                 }}
               >
                 <img
-                  src={`${process.env.PUBLIC_URL}/logo512.png`}
+                  src={logoSrc}
                   alt="Peer logo"
                   width={32}
                   height={32}
@@ -90,7 +91,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                 }}
               >
                 <img
-                  src={`${process.env.PUBLIC_URL}/logo512.png`}
+                  src={logoSrc}
                   alt="Peer logo"
                   width={48}
                   height={48}
@@ -110,7 +111,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                 }}
               >
                 <img
-                  src={`${process.env.PUBLIC_URL}/logo512.png`}
+                  src={logoSrc}
                   alt="Peer logo"
                   width={32}
                   height={32}

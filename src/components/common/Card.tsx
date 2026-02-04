@@ -99,29 +99,53 @@ const Card = ({
   const location = useLocation();
   const isExternal = !!navigateTo && navigateTo.startsWith('http');
   const isLink = !!navigateTo;
-  const cardProps = !isLink
-    ? {}
-    : isExternal
-      ? { as: 'a', href: navigateTo, target: '_blank', rel: 'noopener noreferrer' }
-      : { as: Link, to: navigateTo + location.search };
-
-  return (
-		<StyledCard
-      cursor={navigateTo ? 'pointer' : 'normal'}
-      {...cardProps}
-    >
-			<TitleRow>
-				<CardTitle>{title}</CardTitle>
-				{icon ? <Icon icon={icon} /> : null}
-			</TitleRow>
-			<CardDescription>
-				{description}
-			</CardDescription>
+  const cursor = navigateTo ? 'pointer' : 'normal';
+  const cardContent = (
+    <>
+      <TitleRow>
+        <CardTitle>{title}</CardTitle>
+        {icon ? <Icon icon={icon} /> : null}
+      </TitleRow>
+      <CardDescription>
+        {description}
+      </CardDescription>
       <CardCTA>
         {cta || ''}
       </CardCTA>
-		</StyledCard>
-  )
+    </>
+  );
+
+  if (!isLink) {
+    return (
+      <StyledCard cursor={cursor}>
+        {cardContent}
+      </StyledCard>
+    );
+  }
+
+  if (isExternal) {
+    return (
+      <StyledCard
+        as="a"
+        href={navigateTo}
+        target="_blank"
+        rel="noopener noreferrer"
+        cursor={cursor}
+      >
+        {cardContent}
+      </StyledCard>
+    );
+  }
+
+  return (
+    <StyledCard
+      as={Link}
+      to={navigateTo + location.search}
+      cursor={cursor}
+    >
+      {cardContent}
+    </StyledCard>
+  );
 }
 
 export default Card

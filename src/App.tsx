@@ -22,7 +22,6 @@ const App = () => {
     <Router>
       <Providers>
         <div className="app-container">
-          <a className="skip-link" href="#main-content">Skip to content</a>
           <TopNav />
           <main id="main-content" className="app-content">
             <Routes>

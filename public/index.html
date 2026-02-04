@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#000000" />
     <meta
       name="description"
-      content="The fastest crypto onramp and offramp. Base, Solana, Hyperliquid, Ethereum & more. Venmo, PayPal, Revolut, CashApp & more. No middlemen, no additional verification."
+      content="Peer Developer Portal for ZKP2P integrations, proof generation, and attestation verification."
     />
 
     <!-- Favicon and icons -->
@@ -18,10 +18,10 @@
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://peer.xyz/" />
-    <meta property="og:title" content="Peer" />
+    <meta property="og:title" content="Peer Developer" />
     <meta
       property="og:description"
-      content="The fastest crypto onramp and offramp. Base, Solana, Hyperliquid, Ethereum & more. Venmo, PayPal, Revolut, CashApp & more. No middlemen, no additional verification."
+      content="Developer portal for ZKP2P integrations, proof generation, and attestation verification."
     />
     <meta property="og:image" content="%PUBLIC_URL%/banner.png" />
     <meta property="og:image:width" content="2000" />
@@ -30,160 +30,35 @@
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:url" content="https://peer.xyz/" />
-    <meta property="twitter:title" content="Peer" />
+    <meta property="twitter:title" content="Peer Developer" />
     <meta
       property="twitter:description"
-      content="The fastest crypto onramp and offramp. Base, Solana, Hyperliquid, Ethereum & more. Venmo, PayPal, Revolut, CashApp & more. No middlemen, no additional verification."
+      content="Developer portal for ZKP2P integrations, proof generation, and attestation verification."
     />
     <meta property="twitter:image" content="%PUBLIC_URL%/twitter_card.png" />
     <meta property="twitter:creator" content="@peerxyz" />
-
-    <!-- Base Builder Codes -->
-    <meta name="base:app_id" content="6941a549d77c069a945bdf6c" />
 
     <!-- Additional SEO tags -->
     <meta name="robots" content="index, follow" />
     <meta
       name="keywords"
-      content="peer, p2p, crypto, onramp, offramp, fiat, trustless, blockchain, defi"
+      content="peer developer, zkp2p, zero-knowledge proofs, attestation, extension, verification, web3"
     />
 
     <!-- Performance optimizations -->
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <!-- Fonts are loaded via CSS from @zkp2p/brand package with font-display: swap -->
 
-    <title>Peer | Trustless P2P Fiat-Crypto Marketplace</title>
+    <title>Peer Developer | ZKP2P Tools</title>
 
-    <!-- Structured Data: WebApplication -->
+    <!-- Structured Data: WebSite -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "Peer",
-        "alternateName": "ZKP2P",
+        "@type": "WebSite",
+        "name": "Peer Developer",
         "url": "https://peer.xyz",
-        "description": "The fastest crypto onramp and offramp. Buy and sell crypto with Venmo, PayPal, Revolut, CashApp and more. No middlemen, no additional verification.",
-        "applicationCategory": "FinanceApplication",
-        "operatingSystem": "Web",
-        "browserRequirements": "Requires JavaScript, Web3 wallet",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD",
-          "description": "Free to use, low fees on transactions"
-        },
-        "featureList": [
-          "Crypto onramp and offramp",
-          "Base, Solana, Hyperliquid, Ethereum & 20+ chains",
-          "Venmo, PayPal, Revolut, CashApp & more",
-          "USD, EUR & 20+ currencies",
-          "Non-custodial",
-          "Zero-knowledge proof verification",
-          "No additional verification required",
-          "Peer-to-peer, no middlemen"
-        ],
-        "screenshot": "https://peer.xyz/banner.png",
-        "creator": {
-          "@type": "Organization",
-          "name": "Peer",
-          "url": "https://peer.xyz",
-          "sameAs": [
-            "https://twitter.com/peerxyz",
-            "https://discord.gg/h3rzP79jj3",
-            "https://t.me/zk_p2p",
-            "https://github.com/zkp2p"
-          ]
-        }
-      }
-    </script>
-
-    <!-- Structured Data: FAQPage -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-          {
-            "@type": "Question",
-            "name": "What is Peer?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Peer is a peer-to-peer crypto onramp and offramp. You can buy crypto using payment apps like Venmo, PayPal, Revolut, and CashApp, or sell crypto back to fiat. It's permissionless, non-custodial, you control your funds, and works without middlemen."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "How does Peer work?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Connect via wallet, email, or socials, choose an offer, and send payment through your preferred app (Venmo, PayPal, Revolut, CashApp etc.). Peer uses zero-knowledge proofs to verify your payment without exposing personal data. Once verified, crypto is released directly to your wallet."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "What payment methods does Peer support?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Peer supports Venmo, PayPal, Revolut, CashApp, Wise, Monzo, Chime, Zelle, and Mercado Pago. More payment methods are added regularly."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "What chains does Peer support?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Peer is built on Base and supports bridging to Solana, Hyperliquid, Ethereum, and 20+ other chains."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "What currencies does Peer support?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Peer supports 24 currencies including USD, EUR, GBP, AUD, CAD, CHF, MXN, ARS, and more."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "How long does it take?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "After sending payment, you'll receive crypto in 2-5 minutes. This includes proof generation, verification, and on-chain release. Bridging to other chains adds 1-2 minutes."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "What are Peer's fees?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Peer charges a small protocol fee during bridging (0.5%). There are no hidden charges—the price you see is the price you get."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "Is my payment data private?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Yes. Zero-knowledge proofs verify your payment without exposing personal data. Only the amount, recipient, and timestamp are shared; no bank details, transaction history, or personal information."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "Does Peer require identity verification?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "No additional verification is required. You connect a wallet and use your existing payment apps. Peer uses zero-knowledge proofs to verify transactions while keeping your data private."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "What are the order limits?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Order limits are based on your Taker Tier, which increases as you complete more orders. Limits range from $100 to $10,000 depending on your tier."
-            }
-          }
-        ]
+        "description": "Developer portal for ZKP2P integrations, proof generation, and attestation verification."
       }
     </script>
   </head>
