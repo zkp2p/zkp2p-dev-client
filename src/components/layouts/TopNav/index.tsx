@@ -44,7 +44,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
               >
                 <img
                   src={`${process.env.PUBLIC_URL}/logo512.png`}
-                  alt="ZKP2P logo"
+                  alt="Peer logo"
                   width={48}
                   height={48}
                 />
@@ -64,7 +64,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
               >
                 <img
                   src={`${process.env.PUBLIC_URL}/logo512.png`}
-                  alt="ZKP2P logo"
+                  alt="Peer logo"
                   width={32}
                   height={32}
                 />
@@ -91,7 +91,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
               >
                 <img
                   src={`${process.env.PUBLIC_URL}/logo512.png`}
-                  alt="ZKP2P logo"
+                  alt="Peer logo"
                   width={48}
                   height={48}
                 />
@@ -111,7 +111,7 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
               >
                 <img
                   src={`${process.env.PUBLIC_URL}/logo512.png`}
-                  alt="ZKP2P logo"
+                  alt="Peer logo"
                   width={32}
                   height={32}
                 />
