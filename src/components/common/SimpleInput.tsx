@@ -1,7 +1,7 @@
 import React, { ChangeEvent } from "react";
 import styled from 'styled-components';
 
-import { colors } from '@theme/colors';
+import { colors, radii } from '@theme/colors';
 
 
 interface SimpleInputProps {
@@ -53,13 +53,13 @@ const Container = styled.div`
   display: flex;
   flex-direction: column;
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: ${radii.md}px;
   border: 1px solid ${colors.defaultBorderColor};
-  background-color: #131A2A;
+  background-color: ${colors.inputDefaultColor};
   gap: 8px;
 
   &:focus-within {
-    border-color: #CED4DA;
+    border-color: ${colors.textSecondary};
     border-width: 1px;
   }
 `;
@@ -85,8 +85,8 @@ const StyledInput = styled.input<StyledInputProps>`
   flex-grow: 1;
   border: 0;
   padding: 0;
-  color: #FFFFFF;
-  background-color: #131A2A;
+  color: ${colors.darkText};
+  background-color: ${colors.inputDefaultColor};
   font-size: 14px;
   text-align: left;
 
@@ -95,8 +95,8 @@ const StyledInput = styled.input<StyledInputProps>`
     outline: none;
   }
 
-  &:placeholder {
-    color: #6C757D;
+  &::placeholder {
+    color: ${colors.inputPlaceholderColor};
   }
 
   &[type='number'] {

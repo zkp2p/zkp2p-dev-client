@@ -3,7 +3,7 @@ import styled from 'styled-components';
 // import { Lock as LockIcon } from 'react-feather';
 
 import QuestionHelper from '@components/common/QuestionHelper';
-import { colors } from '@theme/colors';
+import { colors, radii, fontWeights } from '@theme/colors';
 
 
 interface InputProps {
@@ -130,7 +130,7 @@ const Container = styled.div`
   flex-direction: row;
   justify-content: space-between;
   padding: 16px;
-  border-radius: 16px;
+  border-radius: ${radii.md}px;
   border: 1px solid ${colors.defaultBorderColor};
   background-color: ${colors.inputDefaultColor};
 
@@ -153,13 +153,13 @@ const LabelAndTooltipContainer = styled.div`
   justify-content: flex-start;
   gap: 0.25rem;
   align-items: flex-end;
-  color: #CED4DA;
+  color: ${colors.textSecondary};
 `;
 
 const Label = styled.label`
   display: flex;
   font-size: 14px;
-  font-weight: 550;
+  font-weight: ${fontWeights.medium};
 `;
 
 const InputWrapper = styled.div`
@@ -190,7 +190,7 @@ const StyledInput = styled.input<StyledInputProps>`
     outline: none;
   }
 
-  &:placeholder {
+  &::placeholder {
     color: ${colors.inputPlaceholderColor};
   }
 
@@ -225,7 +225,7 @@ const AccessoryAndInputLabelWrapper = styled.div`
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  color: ${colors.grayText};
+  color: ${colors.textSecondary};
   margin: 6px 0px 2px 0px;
 `;
 
@@ -239,7 +239,7 @@ const AccessoryLabelAndMax = styled.div`
 const MaxButton = styled.div`
   color: ${colors.darkText};
   font-size: 14px;
-  font-weight: 600;
+  font-weight: ${fontWeights.semibold};
   padding-bottom: 1px;
   cursor: pointer;
 `;
@@ -247,7 +247,7 @@ const MaxButton = styled.div`
 const AccessoryLabel = styled.div`
   font-size: 14px;
   text-align: right;
-  font-weight: 550;
+  font-weight: ${fontWeights.medium};
 `;
 
 const InputLabel = styled.div`

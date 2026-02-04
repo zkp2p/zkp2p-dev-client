@@ -4,7 +4,7 @@ import styled from "styled-components";
 
 import { Col } from "@components/common/Layout";
 import { CopyButton } from "@components/common/CopyButton";
-import { colors } from "@theme/colors";
+import { colors, radii, fontWeights, opacify } from "@theme/colors";
 
 
 export const LabeledTextArea: React.FC<{
@@ -73,14 +73,15 @@ export const LabeledTextArea: React.FC<{
 };
 
 const Label = styled.label<{ isEmpty: boolean }>`
-  color: #FFF;
+  color: ${colors.darkText};
   padding-bottom: ${(props) => (props.isEmpty ? '0' : '10px')};
   padding-left: 8px;
+  font-weight: ${fontWeights.medium};
 `;
 
 const LabeledTextAreaContainer = styled(Col)<{ height: string }>`
   height: ${(props) => props.height};
-  border-radius: 4px;
+  border-radius: ${radii.md}px;
   position: relative;
   width: 100%;
 
@@ -93,9 +94,9 @@ const LabeledTextAreaContainer = styled(Col)<{ height: string }>`
     position: absolute;
     width: 100%;
     height: 100%;
-    background: #171717;
-    border: 1px dashed rgba(255, 255, 255, 0.5);
-    color: rgba(0, 0, 0, 0.8);
+    background: ${colors.backgroundSecondary};
+    border: 1px dashed ${opacify(50, colors.white)};
+    color: ${colors.white};
     user-select: none;
     pointer-events: none;
     opacity: 0.95;
@@ -118,12 +119,12 @@ const TextAreaWrapper = styled.div`
 `;
 
 const TextArea = styled.textarea<{ height: string }>`
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
+  border: 1px solid ${colors.defaultBorderColor};
+  background: ${colors.inputDefaultColor};
+  border-radius: ${radii.md}px;
   height: ${props => props.height};
   padding: 16px;
-  transition: all 0.2s ease-in-out;
+  transition: border-color 0.2s ease-in-out, background-color 0.2s ease-in-out;
   resize: none;
   color: #FFF;
   width: 100%;
@@ -134,7 +135,12 @@ const TextArea = styled.textarea<{ height: string }>`
   display: block;
 
   &:hover {
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    border: 1px solid ${colors.textSecondary};
+  }
+
+  &:focus-visible {
+    outline: none;
+    border: 1px solid ${colors.textSecondary};
   }
 `;
 
@@ -143,7 +149,7 @@ const CopyButtonWrapper = styled.div`
   top: 10px;
   right: 10px;
   z-index: 10;
-  background-color: rgba(0, 0, 0, 0.3);
+  background-color: ${opacify(30, colors.black)};
   border-radius: 50%;
   padding: 2px;
   display: flex;

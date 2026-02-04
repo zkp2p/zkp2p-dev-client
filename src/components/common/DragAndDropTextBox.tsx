@@ -2,6 +2,7 @@ import React from "react";
 import styled from 'styled-components';
 
 import { useDragAndDrop } from '@hooks/useDragAndDrop';
+import { colors, radii } from "@theme/colors";
 
 type Props = {
 	onFileDrop: (file: File) => void;
@@ -41,10 +42,12 @@ const Col = styled.div`
 
 const DragAndDropTextBoxWrapper = styled(Col)`
 	height: 28vh;
-	border-radius: 4px;
+	border-radius: ${radii.md}px;
 	align-items: center;
 	justify-content: center;
-	border: 2px dashed #ccc;
+	border: 2px dashed ${colors.defaultBorderColor};
 	box-sizing: border-box;
 	padding: 2px;
+	background: ${colors.backgroundSecondary};
+	color: ${colors.textSecondary};
 `;

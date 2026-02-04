@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { AlertTriangle, X, XOctagon } from 'react-feather';
-import { colors } from '@theme/colors';
+import { colors, radii, opacify } from '@theme/colors';
 import { ThemedText } from '@theme/text';
 
 interface WarningTextBoxProps {
@@ -46,7 +46,11 @@ export const WarningTextBox: React.FC<WarningTextBoxProps> = ({
       </IconAndTextContainer>
 
       {showCloseClick && (
-        <CloseButton onClick={onCloseClick} $size={closeIconContainerSize}>
+        <CloseButton
+          onClick={onCloseClick}
+          $size={closeIconContainerSize}
+          aria-label="Close"
+        >
           <X size={closeIconSize} color={color} />
         </CloseButton>
       )}
@@ -61,14 +65,14 @@ const Container = styled.div<{ $type?: 'warning' | 'error' | 'info', $size: 's' 
   gap: ${({ $size }) => ($size === 's' ? '6px' : $size === 'l' ? '12px' : '8px')};
   padding: ${({ $size }) => ($size === 's' ? '8px' : $size === 'l' ? '16px' : '12px')};
   background-color: ${({ $type }) => 
-    $type === 'error' ? 'rgba(255, 67, 67, 0.1)' : 
-    $type === 'info' ? 'rgba(255, 193, 7, 0.1)' :
-    $type === 'warning' ? 'rgba(255, 67, 67, 0.1)' : colors.container};
+    $type === 'error' ? opacify(10, colors.warningRed) : 
+    $type === 'info' ? opacify(10, colors.warningYellow) :
+    $type === 'warning' ? opacify(10, colors.warningRed) : colors.backgroundSecondary};
   border: 1px solid ${({ $type }) => 
     $type === 'error' ? colors.warningRed : 
     $type === 'info' ? colors.warningYellow :
     $type === 'warning' ? colors.warningRed : colors.defaultBorderColor};
-  border-radius: 16px;
+  border-radius: ${radii.md}px;
   white-space: normal;
 `;
 

@@ -1,4 +1,5 @@
 import styled from "styled-components";
+import { colors, radii, fontWeights } from "@theme/colors";
 
 export const SingleLineInput: React.FC<{
   label: string;
@@ -19,7 +20,8 @@ export const SingleLineInput: React.FC<{
     <InputContainer>
       <label
         style={{
-          color: "rgba(255, 255, 255, 0.8)",
+          color: colors.textSecondary,
+          fontWeight: fontWeights.medium,
         }}
       >
         {label}
@@ -50,24 +52,30 @@ const InputContainer = styled(Col)`
 `;
 
 const Input = styled.input<{ hasError: boolean }>`
-  border: 1px solid ${props => props.hasError ? 'red' : 'rgba(255, 255, 255, 0.4)'};
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
+  border: 1px solid ${props =>
+    props.hasError ? colors.invalidRed : colors.defaultBorderColor};
+  background: ${colors.inputDefaultColor};
+  border-radius: ${radii.md}px;
   padding: 8px 12px;
   height: 32px;
   display: flex;
   align-items: center;
   color: #fff;
   font-size: 16px;
-  transition: all 0.2s ease-in-out;
+  transition: border-color 0.2s ease-in-out;
 
   &:hover {
-    border: 1px solid rgba(255, 255, 255, 0.8);
+    border: 1px solid ${colors.textSecondary};
+  }
+
+  &:focus-visible {
+    outline: none;
+    border: 1px solid ${colors.textSecondary};
   }
 `;
 
 const ErrorMessage = styled.div`
-  color: red;
+  color: ${colors.invalidRed};
   font-size: 12px;
   margin-top: 4px;
 `;

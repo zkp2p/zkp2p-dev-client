@@ -1,13 +1,13 @@
 import styled from 'styled-components';
 
 import { SVGIconThemed } from '@components/SVGIcon/SVGIconThemed';
-import { colors } from '@theme/colors';
+import { colors, radii } from '@theme/colors';
 import useQuery from '@hooks/useQuery';
 
 
 const StyledCard = styled.div<{ cursor: string }>`
 	display: flex;
-	background-color: ${colors.container};
+	background-color: ${colors.backgroundSecondary};
 	background-size: auto 100%;
 	background-position: right;
 	background-repeat: no-repeat;
@@ -19,7 +19,7 @@ const StyledCard = styled.div<{ cursor: string }>`
 	color: ${({ theme }) => theme.neutral1};
 	padding: 32px;
 	height: 228px;
-	border-radius: 24px;
+	border-radius: ${radii.xl}px;
 	border: 1px solid ${colors.defaultBorderColor};
   cursor: ${({ cursor }) => cursor}};
 `
