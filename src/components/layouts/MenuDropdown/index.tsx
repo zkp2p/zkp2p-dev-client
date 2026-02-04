@@ -198,6 +198,12 @@ const NavDropdownItem = styled.a`
   &:hover {
     opacity: 0.7;
   }
+
+  &:focus-visible {
+    outline: 2px solid ${peer.igniteYellow};
+    outline-offset: 2px;
+    border-radius: ${radii.xs}px;
+  }
 `;
 
 const IconRow = styled.div`
