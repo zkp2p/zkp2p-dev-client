@@ -618,6 +618,8 @@ const Home: React.FC = () => {
                     name="proofIndex"
                     value={proofIndex.toString()}
                     onChange={(e) => setProofIndex(Number(e.target.value))}
+                    type="number"
+                    step="1"
                     inputMode="numeric"
                     valueFontSize="16px"
                   />
@@ -880,6 +882,8 @@ const Home: React.FC = () => {
                               name="intentAmount"
                               value={calldataInputs.intentAmount}
                               onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
+                              type="number"
+                              step="1"
                               inputMode="numeric"
                               valueFontSize="14px"
                               placeholder="e.g. 1000000…"
@@ -889,6 +893,8 @@ const Home: React.FC = () => {
                               name="intentTimestamp"
                               value={calldataInputs.intentTimestamp}
                               onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
+                              type="number"
+                              step="1"
                               inputMode="numeric"
                               valueFontSize="14px"
                               placeholder="e.g. 1712345678…"
@@ -914,6 +920,8 @@ const Home: React.FC = () => {
                               name="conversionRate"
                               value={calldataInputs.conversionRate}
                               onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
+                              type="number"
+                              step="any"
                               inputMode="decimal"
                               valueFontSize="14px"
                               placeholder="e.g. 1.00…"

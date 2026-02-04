@@ -21,6 +21,7 @@ interface InputProps {
   type?: string;
   inputMode?: React.InputHTMLAttributes<HTMLInputElement>['inputMode'];
   pattern?: string;
+  step?: string | number;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onFocus?: (event: React.FocusEvent<HTMLInputElement>) => void;
   onBlur?: (event: React.FocusEvent<HTMLInputElement>) => void;
@@ -52,6 +53,7 @@ export const Input: React.FC<InputProps> = ({
   type = "text",
   inputMode,
   pattern,
+  step,
   readOnly = false,
   accessoryLabel="",
   helperText="",
@@ -114,6 +116,7 @@ export const Input: React.FC<InputProps> = ({
             autoComplete="off"
             inputMode={inputMode}
             pattern={pattern}
+            step={step}
             data-1p-ignore
           />
         </InputWrapper>
