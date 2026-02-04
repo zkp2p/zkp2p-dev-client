@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { browserName } from 'react-device-detect';
 import { ThemedText } from '@theme/text';
-import { colors } from '@theme/colors';
+import { colors, opacify } from '@theme/colors';
 import { Button } from '@components/common/Button';
 import { Input } from '@components/common/Input';
 import useExtensionProxyProofs from '@hooks/contexts/useExtensionProxyProofs';
@@ -719,7 +719,7 @@ const Home: React.FC = () => {
                   placeholder='Paste your proof JSON here...&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { ... },&#10;    "signatures": { ... }&#10;  }&#10;}'
                 />
                 {proofStatus === 'success' && (
-                  <ThemedText.BodySecondary style={{ color: '#34C759' }}>
+                  <ThemedText.BodySecondary style={{ color: colors.validGreen }}>
                     Valid proof detected
                   </ThemedText.BodySecondary>
                 )}
@@ -804,7 +804,7 @@ const Home: React.FC = () => {
                         />
                       </div>
                       {fetchIntentError && (
-                        <ThemedText.LabelSmall style={{ color: '#FF3B30', marginTop: 6 }}>
+                        <ThemedText.LabelSmall style={{ color: colors.invalidRed, marginTop: 6 }}>
                           {fetchIntentError}
                         </ThemedText.LabelSmall>
                       )}
@@ -1353,7 +1353,7 @@ const ProofTextArea = styled.textarea`
 `;
 
 const ErrorMessage = styled.span`
-  color: #FF3B30;
+  color: ${colors.invalidRed};
 `;
 
 const SpinnerContainer = styled.div`
@@ -1571,10 +1571,10 @@ const AttestationResponseArea = styled.textarea`
 
 const AttestationErrorMessage = styled.div`
   padding: 10px;
-  background: rgba(255, 59, 48, 0.1);
-  border: 1px solid rgba(255, 59, 48, 0.3);
+  background: ${opacify(10, colors.invalidRed)};
+  border: 1px solid ${opacify(30, colors.invalidRed)};
   border-radius: 4px;
-  color: #FF3B30;
+  color: ${colors.invalidRed};
   font-size: 14px;
 `;
 
@@ -1663,10 +1663,10 @@ const CalldataTextArea = styled.textarea`
 
 const CalldataErrorMessage = styled.div`
   padding: 10px;
-  background: rgba(255, 59, 48, 0.1);
-  border: 1px solid rgba(255, 59, 48, 0.3);
+  background: ${opacify(10, colors.invalidRed)};
+  border: 1px solid ${opacify(30, colors.invalidRed)};
   border-radius: 4px;
-  color: #FF3B30;
+  color: ${colors.invalidRed};
   font-size: 14px;
 `;
 

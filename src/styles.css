@@ -1,5 +1,5 @@
 .App {
-  font-family: Graphik;
+  font-family: var(--peer-font-body, 'Inter', sans-serif);
   text-align: center;
 }
 
@@ -31,8 +31,8 @@ h1 {
 }
 
 html {
-  background: #171717 !important;
-  color: #fff;
+  background: var(--peer-black, #000000) !important;
+  color: var(--peer-white, #ffffff);
 }
 
 body {

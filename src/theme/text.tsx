@@ -4,11 +4,19 @@
 
 import { Text, TextProps as TextPropsOriginal } from 'rebass'
 import styled from 'styled-components/macro'
+import { fontFamilies, letterSpacing } from '@theme/colors'
 
 const TextWrapper = styled(Text).withConfig({
   shouldForwardProp: (prop) => prop !== 'color',
 })<{ color: keyof string }>`
   color: ${({ color, theme }) => (theme as any)[color]};
+  font-family: ${fontFamilies.body};
+`
+
+const HeadingTextWrapper = styled(TextWrapper)`
+  font-family: ${fontFamilies.headline};
+  text-transform: uppercase;
+  letter-spacing: ${letterSpacing.headline};
 `
 
 type TextProps = Omit<TextPropsOriginal, 'css'>
@@ -29,22 +37,22 @@ export const ThemedText = {
     return <TextWrapper fontWeight={400} fontSize={12} color="textPrimary" {...props} />
   },
   TitleAccent(props: TextProps) {
-    return <TextWrapper fontWeight={600} fontSize={20} lineHeight="28px" color="textAccent" {...props} />
+    return <HeadingTextWrapper fontWeight={600} fontSize={20} lineHeight="28px" color="textAccent" {...props} />
   },
   HeadlineSmall(props: TextProps) {
-    return <TextWrapper fontWeight={600} fontSize={20} lineHeight="28px" color="textPrimary" {...props} />
+    return <HeadingTextWrapper fontWeight={600} fontSize={20} lineHeight="28px" color="textPrimary" {...props} />
   },
   HeadlineMedium(props: TextProps) {
-    return <TextWrapper fontWeight={600} fontSize={24} color="textPrimary" {...props} />
+    return <HeadingTextWrapper fontWeight={600} fontSize={24} color="textPrimary" {...props} />
   },
   HeadlineLarge(props: TextProps) {
-    return <TextWrapper fontWeight={600} fontSize={36} lineHeight="44px" color="textPrimary" {...props} />
+    return <HeadingTextWrapper fontWeight={600} fontSize={36} lineHeight="44px" color="textPrimary" {...props} />
   },
   LargeHeader(props: TextProps) {
-    return <TextWrapper fontWeight={400} fontSize={36} color="textPrimary" {...props} />
+    return <HeadingTextWrapper fontWeight={400} fontSize={36} color="textPrimary" {...props} />
   },
   Hero(props: TextProps) {
-    return <TextWrapper fontWeight={500} fontSize={64} color="textPrimary" {...props} />
+    return <HeadingTextWrapper fontWeight={500} fontSize={64} color="textPrimary" {...props} />
   },
   LabelSmall(props: TextProps) {
     return <TextWrapper fontWeight={600} fontSize={16} color="textSecondary" {...props} />
