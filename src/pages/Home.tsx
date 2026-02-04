@@ -279,7 +279,7 @@ const Home: React.FC = () => {
   };
 
   const handleOpenSettings = () => {
-    openSidebar('/proofs');
+    openSidebar('/settings');
   };
 
   const handleAuthenticate = () => {

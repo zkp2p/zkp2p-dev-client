@@ -46,8 +46,6 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                 <img
                   src={logoSrc}
                   alt="Peer logo"
-                  width={48}
-                  height={48}
                 />
               </Logo>
               <DevBadge>Developer</DevBadge>
@@ -66,8 +64,6 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                 <img
                   src={logoSrc}
                   alt="Peer logo"
-                  width={32}
-                  height={32}
                 />
               </Logo>
               <DevBadge>Developer</DevBadge>
@@ -93,8 +89,6 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                 <img
                   src={logoSrc}
                   alt="Peer logo"
-                  width={48}
-                  height={48}
                 />
               </Logo>
               <DevBadge>Developer</DevBadge>
@@ -113,8 +107,6 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                 <img
                   src={logoSrc}
                   alt="Peer logo"
-                  width={32}
-                  height={32}
                 />
               </Logo>
               <DevBadge>Developer</DevBadge>
@@ -157,9 +149,11 @@ const Logo = styled(Link)<{ size?: number }>`
   font-family: ${fontFamilies.body};
 
   img {
-    width: ${({ size }) => size || 32}px;
     height: ${({ size }) => size || 32}px;
-    object-fit: cover;
+    width: auto;
+    max-width: none;
+    object-fit: contain;
+    display: block;
   }
 `;
 
