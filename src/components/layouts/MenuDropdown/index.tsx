@@ -6,12 +6,21 @@ import styled from "styled-components";
 import { SVGIconThemed } from '@components/SVGIcon/SVGIconThemed';
 import { useOnClickOutside } from '@hooks/useOnClickOutside';
 import { CLIENT_VERSION } from '@helpers/constants';
-import { ThemedText } from '@theme/text';
+import {
+  peer,
+  radii,
+  fontFamilies,
+  fontWeights,
+  fontSizes,
+  letterSpacing,
+  lineHeights,
+} from '@theme/colors';
 import useMediaQuery from "@hooks/useMediaQuery";
 
 
 export const MenuDropdown = () => {
   const [isOpen, toggleOpen] = useReducer((s) => !s, false)
+  const dropdownId = 'menu-dropdown';
 
   const ref = useRef<HTMLDivElement>(null)
   const location = useLocation();
@@ -33,23 +42,25 @@ export const MenuDropdown = () => {
 
   return (
     <Wrapper isMobile={isMobile} ref={ref}>
-      <NavButton onClick={toggleOpen}>
+      <NavButton
+        type="button"
+        onClick={toggleOpen}
+        aria-label="Open menu"
+        aria-expanded={isOpen}
+        aria-controls={dropdownId}
+      >
         <StyledMoreHorizontal />
       </NavButton>
 
       {isOpen && (
-        <NavDropdown isMobile={isMobile}>
+        <NavDropdown id={dropdownId} role="menu" isMobile={isMobile}>
           <NavDropdownItemContainer>
             <NavDropdownItem as={Link} to={"/tos" + location.search} onClick={toggleOpen}>
-              <ThemedText.LabelSmall textAlign="left">
-                Terms of Service
-              </ThemedText.LabelSmall>
+              <DropdownText>Terms of Service</DropdownText>
             </NavDropdownItem>
 
             <NavDropdownItem as={Link} to={"/pp" + location.search} onClick={toggleOpen}>
-              <ThemedText.LabelSmall textAlign="left">
-                Privacy Policy
-              </ThemedText.LabelSmall>
+              <DropdownText>Privacy Policy</DropdownText>
             </NavDropdownItem>
           </NavDropdownItemContainer>
 
@@ -57,53 +68,54 @@ export const MenuDropdown = () => {
             href="https://dune.com/zkp2p/zkp2p"
             target="_blank"
             rel="noopener noreferrer">
-              <ThemedText.LabelSmall textAlign="left">
-                Analytics ↗
-              </ThemedText.LabelSmall>
+              <DropdownText>Analytics ↗</DropdownText>
           </NavDropdownItem>
 
           <NavDropdownItem
             href="https://docs.zkp2p.xyz/"
             target="_blank"
             rel="noopener noreferrer">
-              <ThemedText.LabelSmall textAlign="left">
-                Documentation ↗
-              </ThemedText.LabelSmall>
+              <DropdownText>Documentation ↗</DropdownText>
           </NavDropdownItem>
           
           <NavDropdownItem
             href="https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih"
             target="_blank"
             rel="noopener noreferrer">
-              <ThemedText.LabelSmall textAlign="left">
-                Browser Extension ↗
-              </ThemedText.LabelSmall>
+              <DropdownText>Browser Extension ↗</DropdownText>
           </NavDropdownItem>
 
           <NavDropdownItem
             href="https://v1.zkp2p.xyz/"
             target="_blank"
             rel="noopener noreferrer">
-              <ThemedText.LabelSmall textAlign="left">
-                ZKP2P V1 ↗
-              </ThemedText.LabelSmall>
+              <DropdownText>ZKP2P V1 ↗</DropdownText>
           </NavDropdownItem>
 
           <IconRow>
-            <Icon
-              icon={'twitter'}
+            <IconButton
+              type="button"
               onClick={() => jumpToMedia('https://x.com/zkp2p')}
-            />
+              aria-label="ZKP2P on X"
+            >
+              <Icon icon={'twitter'} />
+            </IconButton>
 
-            <Icon
-              icon={'github'}
+            <IconButton
+              type="button"
               onClick={() => jumpToMedia('https://github.com/zkp2p')}
-            />
+              aria-label="ZKP2P on GitHub"
+            >
+              <Icon icon={'github'} />
+            </IconButton>
 
-            <Icon
-              icon={'telegram'}
+            <IconButton
+              type="button"
               onClick={() => jumpToMedia('https://t.me/+XDj9FNnW-xs5ODNl')}
-            />
+              aria-label="ZKP2P on Telegram"
+            >
+              <Icon icon={'telegram'} />
+            </IconButton>
 
             <VersionLabel>
               v{CLIENT_VERSION}
@@ -123,31 +135,42 @@ const Wrapper = styled.div<{isMobile?: boolean}>`
 `;
 
 const StyledMoreHorizontal = styled(MoreHorizontal)`
-  color: #FFF;
+  color: ${peer.white};
   width: 24px;
   height: 24px;
 `;
 
-const NavButton = styled.div`
+const NavButton = styled.button.attrs({ type: 'button' })`
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
-  padding-right: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  touch-action: manipulation;
+
+  &:focus-visible {
+    outline: 2px solid ${peer.igniteYellow};
+    outline-offset: 2px;
+    border-radius: ${radii.sm}px;
+  }
 `;
 
 const NavDropdown = styled.div<{isMobile?: boolean}>`
   display: flex;
   flex-direction: column;
-  width: 176px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 1.75rem 1.5rem;
-  background: #1B1B1B;
+  width: 200px;
+  border-radius: ${radii.md}px;
+  border: 1px solid transparent;
+  padding: 1.5rem;
+  background: ${peer.richBlack};
   z-index: 20;
   gap: 0.75rem;
-  color: #FFFFFF;
+  color: ${peer.textPrimary};
 
   position: absolute;
   ${({ isMobile }) => isMobile ? `
@@ -173,7 +196,7 @@ const NavDropdownItem = styled.a`
   cursor: pointer;
 
   &:hover {
-    text-decoration: underline;
+    opacity: 0.7;
   }
 `;
 
@@ -185,20 +208,49 @@ const IconRow = styled.div`
   align-items: center;
 `;
 
-const Icon = styled(SVGIconThemed)`
+const Icon = styled(SVGIconThemed).attrs({ 'aria-hidden': true })`
   width: 20px;
   height: 20px;
-  cursor: pointer;
+  pointer-events: none;
   transition: opacity 0.2s ease-in-out;
+`;
 
-  &:hover {
+const IconButton = styled.button.attrs({ type: 'button' })`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: ${radii.sm}px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+
+  &:hover ${Icon} {
     opacity: 0.6;
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${peer.igniteYellow};
+    outline-offset: 2px;
   }
 `;
 
 const VersionLabel = styled.div`
-  font-size: 14px;
-  color: #FFFFFF;
-  opacity: 0.3;
+  font-size: ${fontSizes.caption}px;
+  color: ${peer.textSecondary};
+  font-family: ${fontFamilies.body};
+  text-transform: uppercase;
+  letter-spacing: ${letterSpacing.wide};
+  line-height: ${lineHeights.single};
   text-align: left;
+`;
+
+const DropdownText = styled.span`
+  font-size: ${fontSizes.button}px;
+  font-weight: ${fontWeights.medium};
+  text-transform: uppercase;
+  letter-spacing: ${letterSpacing.wide};
+  line-height: ${lineHeights.single};
+  font-family: ${fontFamilies.body};
 `;

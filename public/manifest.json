@@ -1,15 +1,25 @@
 {
-  "short_name": "ZKP2P Developer",
-  "name": "ZKP2P Developer Tool",
+  "short_name": "Peer",
+  "name": "Peer – Trustless P2P Fiat-Crypto Exchange",
   "icons": [
     {
-      "src": "/static/logo192.png",
+      "src": "/logo192.png",
       "type": "image/png",
       "sizes": "192x192"
+    },
+    {
+      "src": "/peer400x400.png",
+      "type": "image/png",
+      "sizes": "400x400"
+    },
+    {
+      "src": "/logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
     }
   ],
   "start_url": "./",
   "display": "standalone",
-  "theme_color": "#171717",
-  "background_color": "#171717"
+  "theme_color": "#000000",
+  "background_color": "#000000"
 }

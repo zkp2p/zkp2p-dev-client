@@ -4,7 +4,16 @@ import styled from "styled-components";
 
 import useMediaQuery from "@hooks/useMediaQuery";
 import useQuery from '@hooks/useQuery';
-import { colors } from '@theme/colors';
+import {
+  peer,
+  fontFamilies,
+  fontWeights,
+  fontSizes,
+  letterSpacing,
+  lineHeights,
+  radii,
+  opacify,
+} from '@theme/colors';
 
 
 export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) => {
@@ -33,7 +42,12 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                   navigateWithQuery('/');
                 }}
               >
-                <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
+                <img
+                  src={`${process.env.PUBLIC_URL}/logo512.png`}
+                  alt="ZKP2P logo"
+                  width={48}
+                  height={48}
+                />
               </Logo>
               <DevBadge>Developer</DevBadge>
             </LogoContainer>
@@ -48,7 +62,12 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                   navigateWithQuery('/');
                 }}
               >
-                <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
+                <img
+                  src={`${process.env.PUBLIC_URL}/logo512.png`}
+                  alt="ZKP2P logo"
+                  width={32}
+                  height={32}
+                />
               </Logo>
               <DevBadge>Developer</DevBadge>
             </LogoContainer>
@@ -70,7 +89,12 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                   navigateWithQuery('/');
                 }}
               >
-                <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
+                <img
+                  src={`${process.env.PUBLIC_URL}/logo512.png`}
+                  alt="ZKP2P logo"
+                  width={48}
+                  height={48}
+                />
               </Logo>
               <DevBadge>Developer</DevBadge>
             </LogoContainer>
@@ -85,7 +109,12 @@ export const TopNav: React.FC<{ withoutLinks?: boolean }> = ({ withoutLinks }) =
                   navigateWithQuery('/');
                 }}
               >
-                <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" />
+                <img
+                  src={`${process.env.PUBLIC_URL}/logo512.png`}
+                  alt="ZKP2P logo"
+                  width={32}
+                  height={32}
+                />
               </Logo>
               <DevBadge>Developer</DevBadge>
             </LogoContainer>
@@ -120,10 +149,11 @@ const NavBar = styled.nav`
 
 const Logo = styled(Link)<{ size?: number }>`
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #ffffff;
+  letter-spacing: ${letterSpacing.wide};
+  color: ${peer.textPrimary};
   text-decoration: none;
   font-size: 1.2rem;
+  font-family: ${fontFamilies.body};
 
   img {
     width: ${({ size }) => size || 32}px;
@@ -145,13 +175,22 @@ const LogoContainer = styled.div`
 `;
 
 const DevBadge = styled.div`
-  color: white;
-  border: 1px solid ${colors.white};
-  font-size: 0.8rem;
-  font-weight: bold;
-  padding: 8px;
-  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-left: 8px;
+  padding: 3px 8px;
+  min-height: 22px;
+  border-radius: ${radii.xs}px;
+  background: ${opacify(5, peer.white)};
+  border: 1px solid ${opacify(12, peer.white)};
+  color: ${peer.textSecondary};
+  font-size: ${fontSizes.caption}px;
+  font-family: ${fontFamilies.body};
+  font-weight: ${fontWeights.semibold};
+  letter-spacing: ${letterSpacing.wide};
+  line-height: ${lineHeights.single};
+  text-transform: uppercase;
   position: relative;
   top: -2px;
 `;

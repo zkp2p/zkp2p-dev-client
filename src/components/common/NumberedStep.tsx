@@ -1,4 +1,5 @@
 import styled from "styled-components";
+import { radii } from "@theme/colors";
 
 export const NumberedStep: React.FC<{
   step?: number;
@@ -44,7 +45,7 @@ const SubHeader = styled(Header)`
 const Container = styled(Row)`
   background: rgba(255, 255, 255, 0.05);
   gap: 1rem;
-  border-radius: 12px;
+  border-radius: ${radii.md}px;
   padding: 12px 16px;
   color: #fff;
   line-height: 1.4;
@@ -53,7 +54,7 @@ const Container = styled(Row)`
 
 const Label = styled(CenterAllDiv)`
   background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border-radius: ${radii.xs}px;
   width: 24px;
   height: 24px;
   min-width: 24px;

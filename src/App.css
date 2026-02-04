@@ -7,3 +7,21 @@
 .app-content {
   flex-grow: 1;
 };
+
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -40px;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: #000000;
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 600;
+  z-index: 1000;
+  transition: top 0.2s ease-in-out;
+}
+
+.skip-link:focus-visible {
+  top: 16px;
+}

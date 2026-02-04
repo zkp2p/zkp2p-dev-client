@@ -4,7 +4,7 @@
 
 import { Text, TextProps as TextPropsOriginal } from 'rebass'
 import styled from 'styled-components/macro'
-import { fontFamilies, letterSpacing } from '@theme/colors'
+import { fontFamilies, letterSpacing, lineHeights } from '@theme/colors'
 
 const TextWrapper = styled(Text).withConfig({
   shouldForwardProp: (prop) => prop !== 'color',
@@ -17,6 +17,7 @@ const HeadingTextWrapper = styled(TextWrapper)`
   font-family: ${fontFamilies.headline};
   text-transform: uppercase;
   letter-spacing: ${letterSpacing.headline};
+  line-height: ${lineHeights.headline};
 `
 
 type TextProps = Omit<TextPropsOriginal, 'css'>
@@ -37,16 +38,16 @@ export const ThemedText = {
     return <TextWrapper fontWeight={400} fontSize={12} color="textPrimary" {...props} />
   },
   TitleAccent(props: TextProps) {
-    return <HeadingTextWrapper fontWeight={600} fontSize={20} lineHeight="28px" color="textAccent" {...props} />
+    return <HeadingTextWrapper fontWeight={600} fontSize={20} color="textAccent" {...props} />
   },
   HeadlineSmall(props: TextProps) {
-    return <HeadingTextWrapper fontWeight={600} fontSize={20} lineHeight="28px" color="textPrimary" {...props} />
+    return <HeadingTextWrapper fontWeight={600} fontSize={20} color="textPrimary" {...props} />
   },
   HeadlineMedium(props: TextProps) {
     return <HeadingTextWrapper fontWeight={600} fontSize={24} color="textPrimary" {...props} />
   },
   HeadlineLarge(props: TextProps) {
-    return <HeadingTextWrapper fontWeight={600} fontSize={36} lineHeight="44px" color="textPrimary" {...props} />
+    return <HeadingTextWrapper fontWeight={600} fontSize={36} color="textPrimary" {...props} />
   },
   LargeHeader(props: TextProps) {
     return <HeadingTextWrapper fontWeight={400} fontSize={36} color="textPrimary" {...props} />

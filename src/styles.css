@@ -26,8 +26,11 @@ textarea {
 }
 
 h1 {
-  font-weight: 300;
-  line-height: 1.1;
+  font-family: var(--peer-font-headline, 'PP Valve', sans-serif);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  line-height: 0.9;
 }
 
 html {

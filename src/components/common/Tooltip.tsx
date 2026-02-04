@@ -3,7 +3,7 @@ import styled from 'styled-components/macro';
 
 import noop from '@helpers/noop';
 import Popover, { PopoverProps } from '@components/common/Popover';
-import { colors } from '@theme/colors';
+import { peer, radii, fontSizes, fontWeights, lineHeights } from '@theme/colors';
 
 export enum TooltipSize {
   Small = '256px',
@@ -26,15 +26,15 @@ const TooltipContainer = styled.div<{ size: TooltipSize }>`
   padding: ${({ size }) => getPaddingForSize(size)};
   pointer-events: auto;
 
-  color: ${({ theme }) => theme.textPrimary};
-  font-weight: 400;
-  font-size: 12px;
-  line-height: 16px;
+  color: ${peer.textPrimary};
+  font-weight: ${fontWeights.medium};
+  font-size: ${fontSizes.caption}px;
+  line-height: ${lineHeights.body};
   word-break: break-word;
 
-  background-color: ${colors.container};
-  border-radius: 12px;
-  border: 1px solid ${colors.defaultBorderColor};
+  background-color: ${peer.richBlack};
+  border-radius: ${radii.md}px;
+  border: 1px solid ${peer.borderDark};
 `
 
 type TooltipProps = Omit<PopoverProps, 'content'> & {

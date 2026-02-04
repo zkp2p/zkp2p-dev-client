@@ -113,7 +113,7 @@ const ContentContainer = styled.div`
   z-index: 1;
 `;
 
-const LeftAccessory = styled.img`
+const LeftAccessory = styled.img.attrs({ width: 28, height: 28 })`
   margin-top: -2px;
   height: 28px;
   width: 28px;

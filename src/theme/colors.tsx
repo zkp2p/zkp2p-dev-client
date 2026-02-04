@@ -105,7 +105,7 @@ export const fontSizes = {
 
 export const lineHeights = {
   tight: 0.9,
-  headline: 1.02,
+  headline: 0.9,
   body: 1.3,
   relaxed: 1.5,
   single: 1,

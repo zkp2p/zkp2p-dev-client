@@ -2,7 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { browserName } from 'react-device-detect';
 import { ThemedText } from '@theme/text';
-import { colors, opacify, radii } from '@theme/colors';
+import {
+  colors,
+  opacify,
+  radii,
+  fontFamilies,
+  fontWeights,
+  letterSpacing,
+  lineHeights,
+} from '@theme/colors';
 import { Button } from '@components/common/Button';
 import { Input } from '@components/common/Input';
 import useExtensionProxyProofs from '@hooks/contexts/useExtensionProxyProofs';
@@ -61,12 +69,18 @@ const StepNumber = styled.div`
   font-weight: bold;
   font-size: 14px;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 `;
 
 const StepLabel = styled.div`
-  font-weight: 600;
+  font-family: ${fontFamilies.headline};
+  font-weight: ${fontWeights.semibold};
   font-size: 14px;
+  letter-spacing: ${letterSpacing.headline};
+  line-height: ${lineHeights.headline};
+  text-transform: uppercase;
   color: ${colors.white};
+  text-wrap: balance;
 `;
 
 const Home: React.FC = () => {
@@ -581,18 +595,17 @@ const Home: React.FC = () => {
               valueFontSize="16px"
             />
             <AdvancedSection>
-              <AdvancedHeader type="button" onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}>
+              <AdvancedHeader
+                type="button"
+                onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                aria-expanded={isAdvancedOpen}
+                aria-controls="advanced-settings-panel"
+              >
                 <ThemedText.BodySmall>Advanced Settings</ThemedText.BodySmall>
-                <ChevronRight 
-                  size={16} 
-                  style={{ 
-                    transform: isAdvancedOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                    transition: 'transform 0.2s ease'
-                  }} 
-                />
+                <AdvancedChevron size={16} $expanded={isAdvancedOpen} />
               </AdvancedHeader>
               {isAdvancedOpen && (
-                <AdvancedContent>
+                <AdvancedContent id="advanced-settings-panel">
                   <Input
                     label="Metadata Group (e.g. zelle)"
                     name="metadataPlatform"
@@ -605,6 +618,7 @@ const Home: React.FC = () => {
                     name="proofIndex"
                     value={proofIndex.toString()}
                     onChange={(e) => setProofIndex(Number(e.target.value))}
+                    inputMode="numeric"
                     valueFontSize="16px"
                   />
                 </AdvancedContent>
@@ -717,7 +731,7 @@ const Home: React.FC = () => {
                   value={resultProof}
                   onChange={(e) => handlePastedProofChange(e.target.value)}
                   aria-label="Proof JSON"
-                  placeholder='Paste your proof JSON here…&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { ... },&#10;    "signatures": { ... }&#10;  }&#10;}'
+                  placeholder='Paste your proof JSON here…&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { … },&#10;    "signatures": { … }&#10;  }&#10;}'
                 />
                 {proofStatus === 'success' && (
                   <ThemedText.BodySecondary style={{ color: colors.validGreen }}>
@@ -788,17 +802,25 @@ const Home: React.FC = () => {
                       <StatusLabel>Attestation Service</StatusLabel>
                     </StatusItem>
                     <StyledInputContainer>
-                      <StyledInputLabel>Intent Hash (for Verify)</StyledInputLabel>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-                        <StyledSelect as="input"
-                          value={verifyIntentHash}
-                          onChange={(e: any) => {
-                            const v = e.target.value;
-                            if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) setVerifyIntentHash(v);
-                          }}
-                          onBlur={() => { try { setVerifyIntentHash(normalizeHex32(verifyIntentHash)); } catch {} }}
-                          style={{ flex: 1 }}
-                        />
+                    <StyledInputLabel htmlFor="verifyIntentHash">
+                      Intent Hash (for Verify)
+                    </StyledInputLabel>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                    <StyledSelect
+                      as="input"
+                      id="verifyIntentHash"
+                      name="verifyIntentHash"
+                      value={verifyIntentHash}
+                      onChange={(e: any) => {
+                        const v = e.target.value;
+                        if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) setVerifyIntentHash(v);
+                      }}
+                      onBlur={() => { try { setVerifyIntentHash(normalizeHex32(verifyIntentHash)); } catch {} }}
+                      autoComplete="off"
+                      inputMode="text"
+                      spellCheck="false"
+                      style={{ flex: 1 }}
+                    />
                         <AccessoryButton
                           onClick={handleFetchIntentFromChain}
                           loading={fetchIntentLoading}
@@ -821,11 +843,15 @@ const Home: React.FC = () => {
                     onChange={(e) => setAttestationBaseUrl(e.target.value)}
                     valueFontSize="14px"
                     placeholder="https://attestation-service-staging.zkp2p.xyz…"
+                    type="url"
+                    inputMode="url"
                     readOnly={attestationLoading}
                   />
                   <StyledInputContainer>
-                    <StyledInputLabel>Chain</StyledInputLabel>
+                    <StyledInputLabel htmlFor="chainId">Chain</StyledInputLabel>
             <StyledSelect
+              id="chainId"
+              name="chainId"
               value={chainId}
               onChange={(e) => setChainId(parseInt(e.target.value))}
               disabled={attestationLoading}
@@ -836,18 +862,17 @@ const Home: React.FC = () => {
                   </StyledInputContainer>
                   {/* Verifying Contract moved to Advanced */}
                   <AdvancedSection>
-                    <AdvancedHeader type="button" onClick={() => setIsIntentAdvancedOpen(!isIntentAdvancedOpen)}>
+                    <AdvancedHeader
+                      type="button"
+                      onClick={() => setIsIntentAdvancedOpen(!isIntentAdvancedOpen)}
+                      aria-expanded={isIntentAdvancedOpen}
+                      aria-controls="intent-advanced-panel"
+                    >
                       <ThemedText.BodySmall>Intent Details (Advanced)</ThemedText.BodySmall>
-                      <ChevronRight 
-                        size={16} 
-                        style={{ 
-                          transform: isIntentAdvancedOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.2s ease'
-                        }} 
-                      />
+                      <AdvancedChevron size={16} $expanded={isIntentAdvancedOpen} />
                     </AdvancedHeader>
                     {isIntentAdvancedOpen && (
-                      <AdvancedContent>
+                      <AdvancedContent id="intent-advanced-panel">
                         <CalldataInputsContainer>
                           <CalldataInputsGrid>
                             <Input
@@ -855,6 +880,7 @@ const Home: React.FC = () => {
                               name="intentAmount"
                               value={calldataInputs.intentAmount}
                               onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
+                              inputMode="numeric"
                               valueFontSize="14px"
                               placeholder="e.g. 1000000…"
                             />
@@ -863,6 +889,7 @@ const Home: React.FC = () => {
                               name="intentTimestamp"
                               value={calldataInputs.intentTimestamp}
                               onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
+                              inputMode="numeric"
                               valueFontSize="14px"
                               placeholder="e.g. 1712345678…"
                             />
@@ -887,6 +914,7 @@ const Home: React.FC = () => {
                               name="conversionRate"
                               value={calldataInputs.conversionRate}
                               onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
+                              inputMode="decimal"
                               valueFontSize="14px"
                               placeholder="e.g. 1.00…"
                             />
@@ -1237,8 +1265,13 @@ const StatusItem = styled.div`
 `;
 
 const StatusLabel = styled.div`
-  font-weight: bold;
+  font-family: ${fontFamilies.headline};
+  font-weight: ${fontWeights.semibold};
+  letter-spacing: ${letterSpacing.headline};
+  line-height: ${lineHeights.headline};
+  text-transform: uppercase;
   margin-right: 10px;
+  text-wrap: balance;
 `;
 
 const StatusValue = styled.div`
@@ -1333,7 +1366,7 @@ const ProofTextArea = styled.textarea`
   border-radius: ${radii.md}px;
   font-family: monospace;
   font-size: 12px;
-  resize: none;
+  resize: vertical;
   overflow: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -1386,7 +1419,7 @@ const SpinnerMessage = styled(ThemedText.LabelSmall)`
   opacity: 0.8;
 `;
 
-const IconButton = styled.button`
+const IconButton = styled.button.attrs({ type: 'button' })`
   background: none;
   border: none;
   color: ${colors.white};
@@ -1415,6 +1448,16 @@ const StyledChevronRight = styled(ChevronRight).attrs({ 'aria-hidden': true })`
   width: 16px;
   height: 16px;
   color: ${colors.white};
+`;
+
+const AdvancedChevron = styled(ChevronRight).attrs({ 'aria-hidden': true })<{
+  $expanded?: boolean;
+}>`
+  width: 16px;
+  height: 16px;
+  color: ${colors.white};
+  transition: transform 0.2s ease;
+  transform: ${({ $expanded }) => ($expanded ? 'rotate(90deg)' : 'rotate(0deg)')};
 `;
 
 const EmptyStateContainer = styled.div`
@@ -1512,19 +1555,23 @@ const StyledInputContainer = styled.div`
   flex-direction: column;
   padding: 16px;
   border-radius: ${radii.md}px;
-  border: 1px solid ${colors.defaultBorderColor};
+  border: 1px solid transparent;
   background-color: ${colors.inputDefaultColor};
   width: 100%;
   box-sizing: border-box;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 
   &:focus-within {
-    border-color: ${colors.inputPlaceholderColor};
+    border-color: ${colors.white};
+    box-shadow: 0 0 0 2px ${opacify(20, colors.white)};
   }
 `;
 
 const StyledInputLabel = styled.label`
   font-size: 14px;
-  font-weight: 550;
+  font-weight: ${fontWeights.semibold};
   color: ${colors.textSecondary};
   margin-bottom: 10px;
 `;
@@ -1534,11 +1581,20 @@ const StyledSelect = styled.select`
   border: 0;
   padding: 0;
   color: ${colors.darkText};
-  background-color: ${colors.inputDefaultColor};
+  background-color: transparent;
   font-size: 14px;
+  font-family: ${fontFamilies.body};
+  font-weight: ${fontWeights.medium};
+  line-height: ${lineHeights.body};
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
 
   &:focus {
+    box-shadow: none;
+    outline: none;
+  }
+
+  &:focus-visible {
     box-shadow: none;
     outline: none;
   }
@@ -1564,7 +1620,7 @@ const AttestationResponseArea = styled.textarea`
   border-radius: ${radii.md}px;
   font-family: monospace;
   font-size: 12px;
-  resize: none;
+  resize: vertical;
   overflow: auto;
   white-space: pre-wrap;
   word-wrap: break-word;

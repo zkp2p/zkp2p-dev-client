@@ -1,10 +1,16 @@
 import styled from 'styled-components';
+import { Link, useLocation } from 'react-router-dom';
 
 import { SVGIconThemed } from '@components/SVGIcon/SVGIconThemed';
-import { colors, radii } from '@theme/colors';
-import useQuery from '@hooks/useQuery';
-
-
+import {
+  colors,
+  radii,
+  fontFamilies,
+  fontWeights,
+  letterSpacing,
+  lineHeights,
+  fontSizes,
+} from '@theme/colors';
 const StyledCard = styled.div<{ cursor: string }>`
 	display: flex;
 	background-color: ${colors.backgroundSecondary};
@@ -22,6 +28,13 @@ const StyledCard = styled.div<{ cursor: string }>`
 	border-radius: ${radii.xl}px;
 	border: 1px solid ${colors.defaultBorderColor};
   cursor: ${({ cursor }) => cursor}};
+  text-align: left;
+  width: 100%;
+
+  &:focus-visible {
+    outline: 1px solid ${colors.selectorHoverBorder};
+    outline-offset: 2px;
+  }
 `
 
 const TitleRow = styled.div`
@@ -32,8 +45,11 @@ const TitleRow = styled.div`
 
 const CardTitle = styled.div`
   font-size: 28px;
-  line-height: 36px;
-  font-weight: 535;
+  line-height: ${lineHeights.headline};
+  font-weight: ${fontWeights.semibold};
+  font-family: ${fontFamilies.headline};
+  text-transform: uppercase;
+  letter-spacing: ${letterSpacing.headline};
   color: ${colors.darkText};
 `
 
@@ -49,9 +65,12 @@ const CardDescription = styled.div`
 
 const CardCTA = styled.div`
   color: ${colors.darkText};
-  font-weight: 535;
-  font-size: 20px;
-  line-height: 28px;
+  font-weight: ${fontWeights.semibold};
+  font-size: ${fontSizes.button}px;
+  line-height: ${lineHeights.single};
+  font-family: ${fontFamilies.body};
+  text-transform: uppercase;
+  letter-spacing: ${letterSpacing.wide};
   margin: 24px 0px 0px;
   transition: opacity 250ms ease 0s;
   &:hover {
@@ -77,16 +96,19 @@ const Card = ({
   cta?: string
   navigateTo?: string
 }) => {
-  const { navigateWithQuery } = useQuery()
+  const location = useLocation();
+  const isExternal = !!navigateTo && navigateTo.startsWith('http');
+  const isLink = !!navigateTo;
+  const cardProps = !isLink
+    ? {}
+    : isExternal
+      ? { as: 'a', href: navigateTo, target: '_blank', rel: 'noopener noreferrer' }
+      : { as: Link, to: navigateTo + location.search };
 
   return (
 		<StyledCard
       cursor={navigateTo ? 'pointer' : 'normal'}
-      onClick={() =>
-        navigateTo
-          ? (navigateTo.startsWith('http') ? window.open(navigateTo, '_blank') : navigateWithQuery(navigateTo))
-          : null
-      }
+      {...cardProps}
     >
 			<TitleRow>
 				<CardTitle>{title}</CardTitle>

@@ -1,10 +1,20 @@
 import { Link, useLocation } from "react-router-dom";
 import React from 'react';
 import styled, { css } from 'styled-components';
-import { Repeat, Send, DollarSign, Download } from 'react-feather';
+import { Repeat, DollarSign, Download } from 'react-feather';
 
 import { MenuDropdown } from "@components/layouts/MenuDropdown";
 import useMediaQuery from "@hooks/useMediaQuery";
+import {
+  peer,
+  gradients,
+  fontFamilies,
+  fontWeights,
+  fontSizes,
+  letterSpacing,
+  lineHeights,
+  radii,
+} from "@theme/colors";
 
 
 interface NavItemProps {
@@ -63,9 +73,10 @@ export const NavItem: React.FC<NavItemProps> = ({
           onClick={() => setSelectedItem(item.name)}
           selected={selectedItem === item.routeName}
           indicatorPosition={indicatorPosition}
+          aria-label={isMobile ? item.name : undefined}
         >
           {isMobile ? (
-            <item.icon size={20} />
+            <item.icon size={20} aria-hidden="true" focusable="false" />
           ) : (
             item.name
           )}
@@ -77,11 +88,17 @@ export const NavItem: React.FC<NavItemProps> = ({
   );
 };
 
-const HeaderLinksBox = styled.div<{ vertical?: boolean, isMobile?: boolean }>`
+const HeaderLinksBox = styled.div.withConfig({
+  shouldForwardProp: (prop) => !["vertical", "isMobile"].includes(prop),
+})<{ vertical?: boolean; isMobile?: boolean }>`
   display: flex;
-  font-weight: 700;
-  font-size: 16px;
-  line-height: 24px;
+  font-weight: ${fontWeights.semibold};
+  font-size: ${fontSizes.button}px;
+  line-height: ${lineHeights.single};
+  font-family: ${fontFamilies.body};
+  text-transform: uppercase;
+  letter-spacing: ${letterSpacing.wide};
+  color: ${peer.textPrimary};
   gap: 5px;
   flex-direction: ${props => props.vertical ? 'column' : 'row'};
 
@@ -92,17 +109,32 @@ const HeaderLinksBox = styled.div<{ vertical?: boolean, isMobile?: boolean }>`
   }
 `;
 
-const StyledLink = styled(Link)<{ selected: boolean, isMobile?: boolean, indicatorPosition?: 'top' | 'bottom' }>`
+const StyledLink = styled(Link).withConfig({
+  shouldForwardProp: (prop) =>
+    !['selected', 'isMobile', 'indicatorPosition'].includes(prop),
+})<{ selected: boolean; isMobile?: boolean; indicatorPosition?: 'top' | 'bottom' }>`
   position: relative;
   display: inline-flex;
   margin-right: 24px;
   margin-bottom: 4px;
   text-decoration: none;
-  color: inherit;
+  color: ${peer.textPrimary};
   cursor: pointer;
+  transition: opacity 0.2s ease;
+  touch-action: manipulation;
 
   &:last-child {
     margin-right: 0;
+  }
+
+  &:hover {
+    opacity: 0.7;
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${peer.igniteYellow};
+    outline-offset: 2px;
+    border-radius: ${radii.sm}px;
   }
 
   ${props => props.isMobile ? `
@@ -117,14 +149,14 @@ const StyledLink = styled(Link)<{ selected: boolean, isMobile?: boolean, indicat
       content: '';
       position: absolute;
       width: 32px;
-      height: 4px;
-      background: white;
+      height: 3px;
+      background: ${gradients.ignite};
       ${props.indicatorPosition === 'top' 
         ? 'top: -14px;'
         : 'bottom: -8px;'
       }
       left: calc(50% - 16px);
-      border-radius: 8px;
+      border-radius: ${radii.xs}px;
     }
   `}
 
@@ -132,7 +164,7 @@ const StyledLink = styled(Link)<{ selected: boolean, isMobile?: boolean, indicat
     &.nav-item-sub {
       position: relative;
       display: inline-flex;
-      line-height: 24px;
+      line-height: ${lineHeights.single};
       margin-bottom: 12px;
       padding-bottom: 16px;
 
@@ -141,14 +173,14 @@ const StyledLink = styled(Link)<{ selected: boolean, isMobile?: boolean, indicat
           content: '';
           position: absolute;
           width: 40px;
-          height: 6px;
-          background: white;
+          height: 4px;
+          background: ${gradients.ignite};
           ${props.indicatorPosition === 'top'
             ? 'bottom: 0px;'
             : 'top: 0px;'
           }
           left: calc(50% - 20px);
-          border-radius: 11px;
+          border-radius: ${radii.xs}px;
         }
       `}
     }

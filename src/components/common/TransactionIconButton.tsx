@@ -82,11 +82,13 @@ export const TransactionIconButton: React.FC<TransactionIconButtonProps> = ({
 
   return (
     <Container
+      type="button"
       disabled={disabled || loading}
       $loading={loading}
       $size={size}
       onClick={onClick}
       $hasBackground={hasBackground}
+      aria-label={text}
     >
       {loading ? (
         <Spinner
@@ -151,6 +153,11 @@ const Container = styled.button<{ $loading: boolean; $size: number; $hasBackgrou
       margin-top: 4px;
     `
   }
+
+  &:focus-visible {
+    outline: 1px solid ${colors.selectorHoverBorder};
+    outline-offset: 2px;
+  }
 `;
 
 const IconBorder = styled.div<{ disabled: boolean; $size: number; $hasBackground: boolean }>`
@@ -167,7 +174,7 @@ const IconBorder = styled.div<{ disabled: boolean; $size: number; $hasBackground
   }
 `;
 
-const StyledCcw = styled(RotateCcw)<{ $size: number }>`
+const StyledCcw = styled(RotateCcw).attrs({ 'aria-hidden': true })<{ $size: number }>`
   width: ${props => props.$size * 0.75}px;
   height: ${props => props.$size * 0.75}px;
   color: ${colors.darkText};
@@ -175,7 +182,7 @@ const StyledCcw = styled(RotateCcw)<{ $size: number }>`
   cursor: pointer;
 `;
 
-const StyledTrash = styled(Trash2)`
+const StyledTrash = styled(Trash2).attrs({ 'aria-hidden': true })`
   width: 90%;
   height: 90%;
   color: ${colors.darkText};
@@ -183,7 +190,7 @@ const StyledTrash = styled(Trash2)`
   cursor: pointer;
 `;
 
-const StyledEditIcon = styled(Edit)<{ $size: number }>`
+const StyledEditIcon = styled(Edit).attrs({ 'aria-hidden': true })<{ $size: number }>`
   width: ${props => props.$size * 0.75}px;
   height: ${props => props.$size * 0.75}px;
   color: ${colors.darkText};
@@ -191,7 +198,7 @@ const StyledEditIcon = styled(Edit)<{ $size: number }>`
   cursor: pointer;
 `;
 
-const StyledDollarSign = styled(DollarSign)`
+const StyledDollarSign = styled(DollarSign).attrs({ 'aria-hidden': true })`
   width: 90%;
   height: 90%;
   color: ${colors.darkText};
@@ -199,7 +206,7 @@ const StyledDollarSign = styled(DollarSign)`
   cursor: pointer;
 `;
 
-const StyledCheckCircle = styled(CheckCircle)`
+const StyledCheckCircle = styled(CheckCircle).attrs({ 'aria-hidden': true })`
   width: 90%;
   height: 90%;
   color: ${colors.darkText};

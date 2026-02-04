@@ -79,6 +79,11 @@ const Container = styled.button<TextButtonProps>`
     color: ${peer.textPrimary};
   }
 
+  &:focus-visible {
+    outline: 1px solid ${peer.textSecondary};
+    outline-offset: 2px;
+  }
+
   ${({ disabled }) =>
     disabled &&
     css`
