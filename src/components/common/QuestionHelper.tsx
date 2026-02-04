@@ -3,6 +3,7 @@ import { HelpCircle, Lock } from 'react-feather';
 import styled from 'styled-components/macro';
 
 import Tooltip from '@components/common/Tooltip';
+import { colors, opacify } from '@theme/colors';
 
 
 export default function QuestionHelper({ 
@@ -22,7 +23,14 @@ export default function QuestionHelper({
   const close = useCallback(() => setShow(false), [setShow])
   return (
     <Tooltip text={text} show={show} open={open} close={close}>
-      <QuestionWrapper onClick={open} onMouseEnter={open} onMouseLeave={close} size={size}>
+      <QuestionWrapper
+        type="button"
+        onClick={open}
+        onMouseEnter={open}
+        onMouseLeave={close}
+        size={size}
+        aria-label={isLock ? 'Locked info' : 'Help'}
+      >
         <QuestionMark size={size} color={color}>
           {isLock ? (
             <Lock size={size === 'xsm' ? 12 : size === 'sm' ? 14 : 22} />
@@ -35,7 +43,7 @@ export default function QuestionHelper({
   )
 }
 
-const QuestionWrapper = styled.div<{ size: 'xsm' | 'sm' | 'medium' }>`
+const QuestionWrapper = styled.button<{ size: 'xsm' | 'sm' | 'medium' }>`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -45,13 +53,18 @@ const QuestionWrapper = styled.div<{ size: 'xsm' | 'sm' | 'medium' }>`
   border: none;
   background: none;
   outline: none;
-  cursor: default;
+  cursor: pointer;
   border-radius: ${({ size }) => (size === 'xsm' ? '28px' : size === 'sm' ? '36px' : '42px')};
   font-size: ${({ size }) => (size === 'xsm' ? '10px' : size === 'sm' ? '12px' : '16px')};
 
   :hover,
   :focus {
     opacity: 0.7;
+  }
+
+  :focus-visible {
+    outline: 1px solid ${opacify(30, colors.white)};
+    outline-offset: 2px;
   }
 `;
 

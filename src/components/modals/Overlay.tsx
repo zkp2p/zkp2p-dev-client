@@ -12,6 +12,13 @@ interface OverlayProps {
 export const Overlay: React.FC<OverlayProps> = ({
   onClick 
 }) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!onClick) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onClick();
+    }
+  };
 
   /*
    * Hooks
@@ -30,7 +37,13 @@ export const Overlay: React.FC<OverlayProps> = ({
    */
 
   return (
-    <OverlayContainer onClick={onClick} />
+    <OverlayContainer
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      role={onClick ? 'button' : 'presentation'}
+      tabIndex={onClick ? 0 : -1}
+      aria-label={onClick ? 'Close' : undefined}
+    />
   );
 };
 

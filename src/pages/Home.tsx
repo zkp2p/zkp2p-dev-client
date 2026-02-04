@@ -2,7 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { browserName } from 'react-device-detect';
 import { ThemedText } from '@theme/text';
-import { colors } from '@theme/colors';
+import {
+  colors,
+  opacify,
+  radii,
+  fontFamilies,
+  fontWeights,
+  letterSpacing,
+  lineHeights,
+} from '@theme/colors';
 import { Button } from '@components/common/Button';
 import { Input } from '@components/common/Input';
 import useExtensionProxyProofs from '@hooks/contexts/useExtensionProxyProofs';
@@ -46,7 +54,7 @@ const StepIndicator = styled.div`
   padding-top: 5px;
   padding-bottom: 15px;
   border-bottom: 1px solid ${colors.defaultBorderColor};
-  background: ${colors.container};
+  background: ${colors.backgroundSecondary};
 `;
 
 const StepNumber = styled.div`
@@ -61,12 +69,18 @@ const StepNumber = styled.div`
   font-weight: bold;
   font-size: 14px;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 `;
 
 const StepLabel = styled.div`
-  font-weight: 600;
+  font-family: ${fontFamilies.headline};
+  font-weight: ${fontWeights.semibold};
   font-size: 14px;
+  letter-spacing: ${letterSpacing.headline};
+  line-height: ${lineHeights.headline};
+  text-transform: uppercase;
   color: ${colors.white};
+  text-wrap: balance;
 `;
 
 const Home: React.FC = () => {
@@ -581,18 +595,17 @@ const Home: React.FC = () => {
               valueFontSize="16px"
             />
             <AdvancedSection>
-              <AdvancedHeader onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}>
+              <AdvancedHeader
+                type="button"
+                onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                aria-expanded={isAdvancedOpen}
+                aria-controls="advanced-settings-panel"
+              >
                 <ThemedText.BodySmall>Advanced Settings</ThemedText.BodySmall>
-                <ChevronRight 
-                  size={16} 
-                  style={{ 
-                    transform: isAdvancedOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                    transition: 'transform 0.2s ease'
-                  }} 
-                />
+                <AdvancedChevron size={16} $expanded={isAdvancedOpen} />
               </AdvancedHeader>
               {isAdvancedOpen && (
-                <AdvancedContent>
+                <AdvancedContent id="advanced-settings-panel">
                   <Input
                     label="Metadata Group (e.g. zelle)"
                     name="metadataPlatform"
@@ -605,6 +618,9 @@ const Home: React.FC = () => {
                     name="proofIndex"
                     value={proofIndex.toString()}
                     onChange={(e) => setProofIndex(Number(e.target.value))}
+                    type="number"
+                    step="1"
+                    inputMode="numeric"
                     valueFontSize="16px"
                   />
                 </AdvancedContent>
@@ -716,10 +732,11 @@ const Home: React.FC = () => {
                 <ProofTextArea
                   value={resultProof}
                   onChange={(e) => handlePastedProofChange(e.target.value)}
-                  placeholder='Paste your proof JSON here...&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { ... },&#10;    "signatures": { ... }&#10;  }&#10;}'
+                  aria-label="Proof JSON"
+                  placeholder='Paste your proof JSON here…&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { … },&#10;    "signatures": { … }&#10;  }&#10;}'
                 />
                 {proofStatus === 'success' && (
-                  <ThemedText.BodySecondary style={{ color: '#34C759' }}>
+                  <ThemedText.BodySecondary style={{ color: colors.validGreen }}>
                     Valid proof detected
                   </ThemedText.BodySecondary>
                 )}
@@ -730,7 +747,7 @@ const Home: React.FC = () => {
                   <SpinnerContainer>
                     <Spinner color={colors.defaultBorderColor} size={40} />
                     <SpinnerMessage>
-                      Generating zero-knowledge proof...
+                      Generating zero-knowledge proof…
                       <br />
                       This may take up to 30 seconds
                     </SpinnerMessage>
@@ -749,7 +766,11 @@ const Home: React.FC = () => {
                         </>
                       }
                     </ThemedText.BodySecondary>
-                    <ProofTextArea readOnly value={resultProof} />
+                    <ProofTextArea
+                      readOnly
+                      value={resultProof}
+                      aria-label="Generated proof JSON"
+                    />
                   </>
                 )}
                 {proofStatus === 'timeout' && (
@@ -783,17 +804,25 @@ const Home: React.FC = () => {
                       <StatusLabel>Attestation Service</StatusLabel>
                     </StatusItem>
                     <StyledInputContainer>
-                      <StyledInputLabel>Intent Hash (for Verify)</StyledInputLabel>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-                        <StyledSelect as="input"
-                          value={verifyIntentHash}
-                          onChange={(e: any) => {
-                            const v = e.target.value;
-                            if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) setVerifyIntentHash(v);
-                          }}
-                          onBlur={() => { try { setVerifyIntentHash(normalizeHex32(verifyIntentHash)); } catch {} }}
-                          style={{ flex: 1 }}
-                        />
+                    <StyledInputLabel htmlFor="verifyIntentHash">
+                      Intent Hash (for Verify)
+                    </StyledInputLabel>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                    <StyledSelect
+                      as="input"
+                      id="verifyIntentHash"
+                      name="verifyIntentHash"
+                      value={verifyIntentHash}
+                      onChange={(e: any) => {
+                        const v = e.target.value;
+                        if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) setVerifyIntentHash(v);
+                      }}
+                      onBlur={() => { try { setVerifyIntentHash(normalizeHex32(verifyIntentHash)); } catch {} }}
+                      autoComplete="off"
+                      inputMode="text"
+                      spellCheck="false"
+                      style={{ flex: 1 }}
+                    />
                         <AccessoryButton
                           onClick={handleFetchIntentFromChain}
                           loading={fetchIntentLoading}
@@ -804,7 +833,7 @@ const Home: React.FC = () => {
                         />
                       </div>
                       {fetchIntentError && (
-                        <ThemedText.LabelSmall style={{ color: '#FF3B30', marginTop: 6 }}>
+                        <ThemedText.LabelSmall style={{ color: colors.invalidRed, marginTop: 6 }}>
                           {fetchIntentError}
                         </ThemedText.LabelSmall>
                       )}
@@ -815,12 +844,16 @@ const Home: React.FC = () => {
                     value={attestationBaseUrl}
                     onChange={(e) => setAttestationBaseUrl(e.target.value)}
                     valueFontSize="14px"
-                    placeholder="https://attestation-service-staging.zkp2p.xyz"
+                    placeholder="https://attestation-service-staging.zkp2p.xyz…"
+                    type="url"
+                    inputMode="url"
                     readOnly={attestationLoading}
                   />
                   <StyledInputContainer>
-                    <StyledInputLabel>Chain</StyledInputLabel>
+                    <StyledInputLabel htmlFor="chainId">Chain</StyledInputLabel>
             <StyledSelect
+              id="chainId"
+              name="chainId"
               value={chainId}
               onChange={(e) => setChainId(parseInt(e.target.value))}
               disabled={attestationLoading}
@@ -831,18 +864,17 @@ const Home: React.FC = () => {
                   </StyledInputContainer>
                   {/* Verifying Contract moved to Advanced */}
                   <AdvancedSection>
-                    <AdvancedHeader onClick={() => setIsIntentAdvancedOpen(!isIntentAdvancedOpen)}>
+                    <AdvancedHeader
+                      type="button"
+                      onClick={() => setIsIntentAdvancedOpen(!isIntentAdvancedOpen)}
+                      aria-expanded={isIntentAdvancedOpen}
+                      aria-controls="intent-advanced-panel"
+                    >
                       <ThemedText.BodySmall>Intent Details (Advanced)</ThemedText.BodySmall>
-                      <ChevronRight 
-                        size={16} 
-                        style={{ 
-                          transform: isIntentAdvancedOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.2s ease'
-                        }} 
-                      />
+                      <AdvancedChevron size={16} $expanded={isIntentAdvancedOpen} />
                     </AdvancedHeader>
                     {isIntentAdvancedOpen && (
-                      <AdvancedContent>
+                      <AdvancedContent id="intent-advanced-panel">
                         <CalldataInputsContainer>
                           <CalldataInputsGrid>
                             <Input
@@ -850,16 +882,22 @@ const Home: React.FC = () => {
                               name="intentAmount"
                               value={calldataInputs.intentAmount}
                               onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
+                              type="number"
+                              step="1"
+                              inputMode="numeric"
                               valueFontSize="14px"
-                              placeholder="Amount (wei)"
+                              placeholder="e.g. 1000000…"
                             />
                             <Input
                               label="Timestamp (sec)"
                               name="intentTimestamp"
                               value={calldataInputs.intentTimestamp}
                               onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
+                              type="number"
+                              step="1"
+                              inputMode="numeric"
                               valueFontSize="14px"
-                              placeholder="Unix timestamp"
+                              placeholder="e.g. 1712345678…"
                             />
                             <Input
                               label="Payee Details (bytes32)"
@@ -867,7 +905,7 @@ const Home: React.FC = () => {
                               value={calldataInputs.payeeDetails}
                               onChange={(e) => handleCalldataInputChange('payeeDetails', e.target.value)}
                               valueFontSize="14px"
-                              placeholder="0x..."
+                              placeholder="0x…"
                             />
                             <Input
                               label="Fiat Currency (bytes32)"
@@ -875,15 +913,18 @@ const Home: React.FC = () => {
                               value={calldataInputs.fiatCurrency}
                               onChange={(e) => handleCalldataInputChange('fiatCurrency', e.target.value)}
                               valueFontSize="14px"
-                              placeholder="0x..."
+                              placeholder="0x…"
                             />
                             <Input
                               label="Conversion Rate (1e18)"
                               name="conversionRate"
                               value={calldataInputs.conversionRate}
                               onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
+                              type="number"
+                              step="any"
+                              inputMode="decimal"
                               valueFontSize="14px"
-                              placeholder="Rate"
+                              placeholder="e.g. 1.00…"
                             />
                             <Input
                               label="Payment Method (bytes32)"
@@ -891,7 +932,7 @@ const Home: React.FC = () => {
                               value={paymentMethodHex}
                               onChange={(e) => setPaymentMethodHex(e.target.value)}
                               valueFontSize="14px"
-                              placeholder="0x..."
+                              placeholder="0x…"
                             />
                             <Input
                               label="Verifying Contract"
@@ -899,7 +940,7 @@ const Home: React.FC = () => {
                               value={verifyingContract}
                               onChange={(e) => setVerifyingContract(e.target.value)}
                               valueFontSize="12px"
-                              placeholder="0x16b3e4a3CA36D3A4bCA281767f15C7ADeF4ab163"
+                              placeholder="e.g. 0x16b3…"
                             />
                             <Input
                               label="Post Intent Hook Data (bytes)"
@@ -907,7 +948,7 @@ const Home: React.FC = () => {
                               value={postIntentHookData}
                               onChange={(e) => setPostIntentHookData(e.target.value)}
                               valueFontSize="12px"
-                              placeholder="0x"
+                              placeholder="0x…"
                             />
                           </CalldataInputsGrid>
                         </CalldataInputsContainer>
@@ -944,7 +985,11 @@ const Home: React.FC = () => {
                       <ThemedText.BodySecondary>
                         ✅ Attestation Response:
                       </ThemedText.BodySecondary>
-                      <AttestationResponseArea readOnly value={attestationResponse} />
+                      <AttestationResponseArea
+                        readOnly
+                        value={attestationResponse}
+                        aria-label="Attestation response"
+                      />
                     </AttestationResultSection>
                   )}
                   {attestationError && (
@@ -967,7 +1012,8 @@ const Home: React.FC = () => {
                           <CalldataTextArea
                             readOnly
                             value={generatedCalldata}
-                            placeholder="Generated fulfillIntent params will appear here"
+                            aria-label="Fulfill intent calldata"
+                            placeholder="Generated fulfillIntent params will appear here…"
                           />
                         </>
                       )}
@@ -1033,10 +1079,10 @@ const AppContainer = styled.div`
   width: 100%;
   height: auto;
   max-height: none;
-  border-radius: 8px;
+  border-radius: ${radii.xl}px;
   border: 1px solid ${colors.defaultBorderColor};
   overflow: visible;
-  background: ${colors.container};
+  background: ${colors.backgroundSecondary};
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   box-sizing: border-box;
   
@@ -1227,8 +1273,13 @@ const StatusItem = styled.div`
 `;
 
 const StatusLabel = styled.div`
-  font-weight: bold;
+  font-family: ${fontFamilies.headline};
+  font-weight: ${fontWeights.semibold};
+  letter-spacing: ${letterSpacing.headline};
+  line-height: ${lineHeights.headline};
+  text-transform: uppercase;
   margin-right: 10px;
+  text-wrap: balance;
 `;
 
 const StatusValue = styled.div`
@@ -1284,13 +1335,13 @@ const MetadataItem = styled.div<{ selected: boolean }>`
       p.selected
         ? colors.selectorHoverBorder
         : colors.defaultBorderColor};
-  border-radius: 8px;
+  border-radius: ${radii.md}px;
   background-color: ${(p) =>
-    p.selected ? colors.selectorHoverBorder : 'transparent'};
+    p.selected ? opacify(10, colors.white) : colors.backgroundSecondary};
   
   &:hover {
     background-color: ${(p) =>
-      p.selected ? colors.selectorHoverBorder : colors.selectorHover};
+      p.selected ? opacify(14, colors.white) : opacify(6, colors.white)};
   }
 `;
 
@@ -1298,6 +1349,8 @@ const MetadataInfo = styled.div`
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0;
+  word-break: break-word;
 `;
 
 const ProofContainer = styled.div`
@@ -1320,15 +1373,15 @@ const ProofTextArea = styled.textarea`
   margin-top: 10px;
   padding: 10px;
   border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 4px;
+  border-radius: ${radii.md}px;
   font-family: monospace;
   font-size: 12px;
-  resize: none;
+  resize: vertical;
   overflow: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
   box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.1);
+  background: ${colors.inputDefaultColor};
   color: ${colors.white};
   
   scrollbar-width: thin;
@@ -1353,7 +1406,7 @@ const ProofTextArea = styled.textarea`
 `;
 
 const ErrorMessage = styled.span`
-  color: #FF3B30;
+  color: ${colors.invalidRed};
 `;
 
 const SpinnerContainer = styled.div`
@@ -1364,9 +1417,9 @@ const SpinnerContainer = styled.div`
   width: 100%;
   height: 100%;
   padding: 10px;
-  border-radius: 4px;
+  border-radius: ${radii.md}px;
   box-sizing: border-box;
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: ${colors.backgroundSecondary};
   flex: 1;
 `;
 
@@ -1376,7 +1429,7 @@ const SpinnerMessage = styled(ThemedText.LabelSmall)`
   opacity: 0.8;
 `;
 
-const IconButton = styled.button`
+const IconButton = styled.button.attrs({ type: 'button' })`
   background: none;
   border: none;
   color: ${colors.white};
@@ -1394,12 +1447,27 @@ const IconButton = styled.button`
   &:hover:not(:disabled) {
     opacity: 0.8;
   }
+
+  &:focus-visible {
+    outline: 1px solid ${opacify(30, colors.white)};
+    outline-offset: 2px;
+  }
 `;
 
-const StyledChevronRight = styled(ChevronRight)`
+const StyledChevronRight = styled(ChevronRight).attrs({ 'aria-hidden': true })`
   width: 16px;
   height: 16px;
   color: ${colors.white};
+`;
+
+const AdvancedChevron = styled(ChevronRight).attrs({ 'aria-hidden': true })<{
+  $expanded?: boolean;
+}>`
+  width: 16px;
+  height: 16px;
+  color: ${colors.white};
+  transition: transform 0.2s ease;
+  transform: ${({ $expanded }) => ($expanded ? 'rotate(90deg)' : 'rotate(0deg)')};
 `;
 
 const EmptyStateContainer = styled.div`
@@ -1422,20 +1490,29 @@ const EmptyStateMessage = styled(ThemedText.BodySmall)`
 
 const AdvancedSection = styled.div`
   border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 8px;
+  border-radius: ${radii.md}px;
   overflow: hidden;
+  background: ${colors.backgroundSecondary};
 `;
 
-const AdvancedHeader = styled.div`
+const AdvancedHeader = styled.button`
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
   cursor: pointer;
-  background: rgba(0, 0, 0, 0.05);
+  background: ${opacify(8, colors.white)};
+  border: none;
+  width: 100%;
+  text-align: left;
   
   &:hover {
-    background: rgba(0, 0, 0, 0.1);
+    background: ${opacify(12, colors.white)};
+  }
+
+  &:focus-visible {
+    outline: 1px solid ${opacify(30, colors.white)};
+    outline-offset: 2px;
   }
 `;
 
@@ -1487,21 +1564,25 @@ const StyledInputContainer = styled.div`
   display: flex;
   flex-direction: column;
   padding: 16px;
-  border-radius: 16px;
-  border: 1px solid ${colors.defaultBorderColor};
+  border-radius: ${radii.md}px;
+  border: 1px solid transparent;
   background-color: ${colors.inputDefaultColor};
   width: 100%;
   box-sizing: border-box;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 
   &:focus-within {
-    border-color: ${colors.inputPlaceholderColor};
+    border-color: ${colors.white};
+    box-shadow: 0 0 0 2px ${opacify(20, colors.white)};
   }
 `;
 
 const StyledInputLabel = styled.label`
   font-size: 14px;
-  font-weight: 550;
-  color: #CED4DA;
+  font-weight: ${fontWeights.semibold};
+  color: ${colors.textSecondary};
   margin-bottom: 10px;
 `;
 
@@ -1510,11 +1591,20 @@ const StyledSelect = styled.select`
   border: 0;
   padding: 0;
   color: ${colors.darkText};
-  background-color: ${colors.inputDefaultColor};
+  background-color: transparent;
   font-size: 14px;
+  font-family: ${fontFamilies.body};
+  font-weight: ${fontWeights.medium};
+  line-height: ${lineHeights.body};
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
 
   &:focus {
+    box-shadow: none;
+    outline: none;
+  }
+
+  &:focus-visible {
     box-shadow: none;
     outline: none;
   }
@@ -1537,15 +1627,15 @@ const AttestationResponseArea = styled.textarea`
   max-height: calc(100vh - 300px);
   padding: 10px;
   border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 4px;
+  border-radius: ${radii.md}px;
   font-family: monospace;
   font-size: 12px;
-  resize: none;
+  resize: vertical;
   overflow: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
   box-sizing: border-box;
-  background: rgba(0, 128, 0, 0.1);
+  background: ${colors.inputDefaultColor};
   color: ${colors.white};
   
   scrollbar-width: thin;
@@ -1571,10 +1661,10 @@ const AttestationResponseArea = styled.textarea`
 
 const AttestationErrorMessage = styled.div`
   padding: 10px;
-  background: rgba(255, 59, 48, 0.1);
-  border: 1px solid rgba(255, 59, 48, 0.3);
-  border-radius: 4px;
-  color: #FF3B30;
+  background: ${opacify(10, colors.invalidRed)};
+  border: 1px solid ${opacify(30, colors.invalidRed)};
+  border-radius: ${radii.sm}px;
+  color: ${colors.invalidRed};
   font-size: 14px;
 `;
 
@@ -1628,7 +1718,7 @@ const CalldataTextArea = styled.textarea`
   max-height: 300px;
   padding: 10px;
   border: 1px solid ${colors.defaultBorderColor};
-  border-radius: 4px;
+  border-radius: ${radii.md}px;
   font-family: monospace;
   font-size: 12px;
   resize: vertical;
@@ -1637,7 +1727,7 @@ const CalldataTextArea = styled.textarea`
   word-wrap: break-word;
   word-break: break-all;
   box-sizing: border-box;
-  background: rgba(0, 128, 0, 0.05);
+  background: ${colors.inputDefaultColor};
   color: ${colors.white};
   
   scrollbar-width: thin;
@@ -1663,10 +1753,10 @@ const CalldataTextArea = styled.textarea`
 
 const CalldataErrorMessage = styled.div`
   padding: 10px;
-  background: rgba(255, 59, 48, 0.1);
-  border: 1px solid rgba(255, 59, 48, 0.3);
-  border-radius: 4px;
-  color: #FF3B30;
+  background: ${opacify(10, colors.invalidRed)};
+  border: 1px solid ${opacify(30, colors.invalidRed)};
+  border-radius: ${radii.sm}px;
+  color: ${colors.invalidRed};
   font-size: 14px;
 `;
 

@@ -23,12 +23,12 @@ const App = () => {
       <Providers>
         <div className="app-container">
           <TopNav />
-          <div className="app-content">
+          <main id="main-content" className="app-content">
             <Routes>
               <Route path="/" element={<Home />} />
               <Route element={<>Not found</>} />
             </Routes>
-          </div>
+          </main>
         </div>
       </Providers>
     </Router>

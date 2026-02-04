@@ -2,59 +2,69 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#171717" />
+    <meta name="theme-color" content="#000000" />
     <meta
       name="description"
-      content="ZKP2P Developer Tool that is used to create new providers"
+      content="Peer Developer Portal for ZKP2P integrations, proof generation, and attestation verification."
     />
 
-    <!-- Open Graph tags -->
-    <meta property="og:title" content="ZKP2P Developer" />
-    <meta property="og:description" content="ZKP2P Developer Tool that is used to create new providers" />
-    <meta property="og:image" content="%PUBLIC_URL%/banner.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-
-    <!-- Twitter Card tags -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:site" content="https://zkp2p.xyz" />
-    <meta property="twitter:title" content="ZKP2P" />
-    <meta property="twitter:creator" content="@zkp2p" />
-    <meta property="twitter:description" content="ZKP2P Developer Tool that is used to create new providers" />
-    <meta property="twitter:image" content="https://zkp2p-assets.s3.amazonaws.com/ramp_background.png" />
-
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/app192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
+    <!-- Favicon and icons -->
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="%PUBLIC_URL%/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/apple-touch-icon.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
 
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>ZKP2P Developer</title>
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://peer.xyz/" />
+    <meta property="og:title" content="Peer Developer" />
+    <meta
+      property="og:description"
+      content="Developer portal for ZKP2P integrations, proof generation, and attestation verification."
+    />
+    <meta property="og:image" content="%PUBLIC_URL%/banner.png" />
+    <meta property="og:image:width" content="2000" />
+    <meta property="og:image:height" content="2000" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://peer.xyz/" />
+    <meta property="twitter:title" content="Peer Developer" />
+    <meta
+      property="twitter:description"
+      content="Developer portal for ZKP2P integrations, proof generation, and attestation verification."
+    />
+    <meta property="twitter:image" content="%PUBLIC_URL%/twitter_card.png" />
+    <meta property="twitter:creator" content="@peerxyz" />
+
+    <!-- Additional SEO tags -->
+    <meta name="robots" content="index, follow" />
+    <meta
+      name="keywords"
+      content="peer developer, zkp2p, zero-knowledge proofs, attestation, extension, verification, web3"
+    />
+
+    <!-- Performance optimizations -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <!-- Fonts are loaded via CSS from @zkp2p/brand package with font-display: swap -->
+
+    <title>Peer Developer | ZKP2P Tools</title>
+
+    <!-- Structured Data: WebSite -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Peer Developer",
+        "url": "https://peer.xyz",
+        "description": "Developer portal for ZKP2P integrations, proof generation, and attestation verification."
+      }
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
     <div id="modals"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
-
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
-
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
   </body>
 </html>

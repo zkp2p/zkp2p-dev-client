@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled, { css } from 'styled-components/macro';
 import { Check, Copy } from 'react-feather';
-import { colors } from '@theme/colors';
+import { colors, opacify } from '@theme/colors';
 
 
 interface CopyButtonProps {
@@ -40,13 +40,18 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
   const iconSize = size === 'sm' ? 14 : 18;
 
   return (
-    <IconBorder onClick={handleCopyClick} size={size}>
+    <IconBorder
+      type="button"
+      onClick={handleCopyClick}
+      size={size}
+      aria-label={copied ? 'Copied' : 'Copy to clipboard'}
+    >
       {copied ? <StyledCheck size={iconSize}/> : <StyledCopy size={iconSize}/>}
     </IconBorder>
   );
 };
 
-const StyledCopy = styled(Copy)<{ size: number }>`
+const StyledCopy = styled(Copy).attrs({ 'aria-hidden': true })<{ size: number }>`
   color: ${colors.lightGrayText};
   cursor: pointer;
   ${({ size }) => `
@@ -55,7 +60,7 @@ const StyledCopy = styled(Copy)<{ size: number }>`
   `}
 `;
 
-const StyledCheck = styled(Check)<{ size: number }>`
+const StyledCheck = styled(Check).attrs({ 'aria-hidden': true })<{ size: number }>`
   color: ${colors.lightGrayText};
   cursor: pointer;
   ${({ size }) => `
@@ -64,7 +69,7 @@ const StyledCheck = styled(Check)<{ size: number }>`
   `}
 `;
 
-const IconBorder = styled.div<{ size: 'sm' | 'default' }>`
+const IconBorder = styled.button<{ size: 'sm' | 'default' }>`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -72,4 +77,12 @@ const IconBorder = styled.div<{ size: 'sm' | 'default' }>`
   ${({ size }) => css`
     padding: ${size === 'sm' ? '0px' : '10px'};
   `}
+  border: none;
+  background: transparent;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 1px solid ${opacify(30, colors.white)};
+    outline-offset: 2px;
+  }
 `;

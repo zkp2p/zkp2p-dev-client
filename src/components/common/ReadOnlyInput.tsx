@@ -1,15 +1,26 @@
+import React, { useId } from "react";
 import styled from "styled-components";
+import { colors, radii, fontWeights } from "@theme/colors";
 
 export const ReadOnlyInput: React.FC<{
   label: string;
   value: any;
 }> = ({ label, value }) => {
+  const inputId = useId();
+  const inputName = label.replace(/\s+/g, "-").toLowerCase();
   return (
     <InputContainer>
-      <label>
+      <Label htmlFor={inputId}>
         {label}
-      </label>
-      <Input value={value} placeholder={label} readOnly={true} />
+      </Label>
+      <Input
+        id={inputId}
+        name={inputName}
+        value={value}
+        placeholder={label}
+        readOnly={true}
+        autoComplete="off"
+      />
     </InputContainer>
   );
 };
@@ -24,15 +35,20 @@ const InputContainer = styled(Col)`
   margin: 4px;
 `;
 
+const Label = styled.label`
+  color: ${colors.textSecondary};
+  font-weight: ${fontWeights.medium};
+`;
+
 const Input = styled.input`
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
+  border: 1px solid ${colors.defaultBorderColor};
+  background: ${colors.inputDefaultColor};
+  border-radius: ${radii.md}px;
   padding: 8px 12px;
   height: 32px;
   display: flex;
   align-items: center;
-  color: #fff;
+  color: ${colors.darkText};
   font-size: 16px;
   user-select: none;
   -webkit-user-select: none;

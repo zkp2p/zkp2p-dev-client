@@ -16,6 +16,7 @@ const sockPort = process.env.WDS_SOCKET_PORT;
 module.exports = function (proxy, allowedHost) {
   const disableFirewall =
     !proxy || process.env.DANGEROUSLY_DISABLE_HOST_CHECK === 'true';
+  const allowedHosts = [allowedHost, '.ts.net', 'ts.net'].filter(Boolean);
   return {
     // WebpackDevServer 2.4.3 introduced a security fix that prevents remote
     // websites from potentially accessing local content through DNS rebinding:
@@ -35,7 +36,7 @@ module.exports = function (proxy, allowedHost) {
     // really know what you're doing with a special environment variable.
     // Note: ["localhost", ".localhost"] will support subdomains - but we might
     // want to allow setting the allowedHosts manually for more complex setups
-    allowedHosts: disableFirewall ? 'all' : [allowedHost],
+    allowedHosts: disableFirewall ? 'all' : allowedHosts,
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': '*',

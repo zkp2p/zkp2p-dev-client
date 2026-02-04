@@ -1,9 +1,17 @@
-import React, { ChangeEvent } from 'react';
+import React, { ChangeEvent, ReactNode } from 'react';
 import styled from 'styled-components';
 // import { Lock as LockIcon } from 'react-feather';
 
 import QuestionHelper from '@components/common/QuestionHelper';
-import { colors } from '@theme/colors';
+import {
+  peer,
+  radii,
+  fontFamilies,
+  fontWeights,
+  fontSizes,
+  lineHeights,
+  opacify,
+} from '@theme/colors';
 
 
 interface InputProps {
@@ -11,6 +19,9 @@ interface InputProps {
   name: string;
   value?: string;
   type?: string;
+  inputMode?: React.InputHTMLAttributes<HTMLInputElement>['inputMode'];
+  pattern?: string;
+  step?: string | number;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onFocus?: (event: React.FocusEvent<HTMLInputElement>) => void;
   onBlur?: (event: React.FocusEvent<HTMLInputElement>) => void;
@@ -20,7 +31,7 @@ interface InputProps {
   iconElement?: React.ReactNode;
   readOnly?: boolean;
   accessoryLabel?: string;
-  helperText?: string;
+  helperText?: ReactNode;
   enableMax?: boolean
   valueFontSize?: string;
   maxButtonOnClick?: () => void;
@@ -40,6 +51,9 @@ export const Input: React.FC<InputProps> = ({
   inputLabel,
   iconElement,
   type = "text",
+  inputMode,
+  pattern,
+  step,
   readOnly = false,
   accessoryLabel="",
   helperText="",
@@ -50,6 +64,12 @@ export const Input: React.FC<InputProps> = ({
   lockLabel = "",
 }: InputProps) => {
   Input.displayName = "Input";
+
+  const handleWheel = (event: React.WheelEvent<HTMLInputElement>) => {
+    if (type === 'number') {
+      event.currentTarget.blur();
+    }
+  };
 
   return (
     <Container>
@@ -89,10 +109,14 @@ export const Input: React.FC<InputProps> = ({
             onFocus={onFocus}
             onBlur={onBlur}
             onKeyDown={onKeyDown}
+            onWheel={handleWheel}
             readOnly={readOnly}
             valueFontSize={valueFontSize}
             spellCheck="false"
             autoComplete="off"
+            inputMode={inputMode}
+            pattern={pattern}
+            step={step}
             data-1p-ignore
           />
         </InputWrapper>
@@ -105,7 +129,7 @@ export const Input: React.FC<InputProps> = ({
           </AccessoryLabel>
 
           {enableMax && (
-            <MaxButton onClick={maxButtonOnClick}>
+            <MaxButton type="button" onClick={maxButtonOnClick}>
               Max
             </MaxButton>
           )}
@@ -130,13 +154,16 @@ const Container = styled.div`
   flex-direction: row;
   justify-content: space-between;
   padding: 16px;
-  border-radius: 16px;
-  border: 1px solid ${colors.defaultBorderColor};
-  background-color: ${colors.inputDefaultColor};
+  border-radius: ${radii.md}px;
+  border: 1px solid transparent;
+  background-color: ${peer.black};
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 
   &:focus-within {
-    border-color: ${colors.inputPlaceholderColor};
-    border-width: 1px;
+    border-color: ${peer.white};
+    box-shadow: 0 0 0 2px ${opacify(20, peer.white)};
   }
 `;
 
@@ -153,13 +180,14 @@ const LabelAndTooltipContainer = styled.div`
   justify-content: flex-start;
   gap: 0.25rem;
   align-items: flex-end;
-  color: #CED4DA;
+  color: ${peer.textSecondary};
 `;
 
 const Label = styled.label`
   display: flex;
-  font-size: 14px;
-  font-weight: 550;
+  font-size: ${fontSizes.button}px;
+  font-weight: ${fontWeights.semibold};
+  white-space: nowrap;
 `;
 
 const InputWrapper = styled.div`
@@ -168,7 +196,7 @@ const InputWrapper = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: stretch;
-  margin-top: 10px;
+  margin-top: 8px;
 `;
 
 interface StyledInputProps {
@@ -181,17 +209,27 @@ const StyledInput = styled.input<StyledInputProps>`
   flex-grow: 1;
   border: 0;
   padding: 0;
-  color: ${colors.darkText};
-  background-color: ${colors.inputDefaultColor};
-  font-size: ${({ valueFontSize }) => valueFontSize ? valueFontSize : '24px'};
+  outline: none;
+  color: ${peer.textPrimary};
+  background-color: transparent;
+  font-size: ${({ valueFontSize }) => valueFontSize ?? `${fontSizes.bodyLarge}px`};
+  font-family: ${fontFamilies.body};
+  font-weight: ${fontWeights.medium};
+  line-height: ${lineHeights.body};
+  font-variant-numeric: tabular-nums;
 
   &:focus {
     box-shadow: none;
     outline: none;
   }
 
-  &:placeholder {
-    color: ${colors.inputPlaceholderColor};
+  &:focus-visible {
+    box-shadow: none;
+    outline: none;
+  }
+
+  &::placeholder {
+    color: ${peer.textPlaceholder};
   }
 
   &[type='number'] {
@@ -217,7 +255,8 @@ const StyledInput = styled.input<StyledInputProps>`
 
   /* Disable password manager suggestions */
   &:-webkit-autofill {
-    -webkit-box-shadow: 0 0 0 30px ${colors.container} inset !important;
+    -webkit-box-shadow: 0 0 0 30px ${peer.black} inset !important;
+    -webkit-text-fill-color: ${peer.textPrimary} !important;
   }
 `;
 
@@ -225,8 +264,8 @@ const AccessoryAndInputLabelWrapper = styled.div`
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  color: ${colors.grayText};
-  margin: 6px 0px 2px 0px;
+  color: ${peer.textSecondary};
+  margin: 4px 0 0;
 `;
 
 const AccessoryLabelAndMax = styled.div`
@@ -236,25 +275,40 @@ const AccessoryLabelAndMax = styled.div`
   gap: 6px;
 `;
 
-const MaxButton = styled.div`
-  color: ${colors.darkText};
-  font-size: 14px;
-  font-weight: 600;
+const MaxButton = styled.button.attrs({ type: 'button' })`
+  border: none;
+  background: transparent;
+  color: ${peer.white};
+  font-size: ${fontSizes.button}px;
+  font-weight: ${fontWeights.semibold};
   padding-bottom: 1px;
   cursor: pointer;
+  transition: color 0.15s ease-out;
+  touch-action: manipulation;
+
+  &:hover {
+    color: ${peer.igniteRed};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${peer.igniteYellow};
+    outline-offset: 2px;
+    border-radius: ${radii.xs}px;
+  }
 `;
 
 const AccessoryLabel = styled.div`
-  font-size: 14px;
+  font-size: ${fontSizes.button}px;
   text-align: right;
-  font-weight: 550;
+  font-weight: ${fontWeights.semibold};
 `;
 
 const InputLabel = styled.div`
   pointer-events: none;
-  color: ${colors.darkText};
-  font-size: 20px;
+  color: ${peer.textPrimary};
+  font-size: ${fontSizes.body}px;
   text-align: right;
+  font-family: ${fontFamilies.body};
 `;
 
 const InputLabelWithIcon = styled.div`
@@ -262,9 +316,10 @@ const InputLabelWithIcon = styled.div`
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 20px;
-  font-weight: 600;
-  color: ${colors.darkText};
+  font-size: ${fontSizes.body}px;
+  font-weight: ${fontWeights.semibold};
+  color: ${peer.textPrimary};
   pointer-events: none;
   text-align: right;
+  font-family: ${fontFamilies.body};
 `;

@@ -1,6 +1,6 @@
 import React, { ChangeEvent } from 'react';
 import styled from 'styled-components';
-import { colors } from '@theme/colors';
+import { colors, radii, fontWeights } from '@theme/colors';
 
 interface HorizontalInputProps {
   label: string;
@@ -31,7 +31,7 @@ export const HorizontalInput: React.FC<HorizontalInputProps> = ({
 }) => {
   return (
     <Container width={width}>
-      <Label>{label}</Label>
+      <Label htmlFor={name}>{label}</Label>
       <InputContainer>
         <StyledInput
           type={type}
@@ -42,6 +42,7 @@ export const HorizontalInput: React.FC<HorizontalInputProps> = ({
           onChange={onChange}
           readOnly={readOnly}
           valueFontSize={valueFontSize}
+          autoComplete="off"
         />
         {inputLabel && (
           <InputLabel>
@@ -68,7 +69,7 @@ const Container = styled.div<ContainerProps>`
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: ${radii.md}px;
   border: 1px solid ${colors.defaultBorderColor};
   background-color: ${colors.inputDefaultColor};
   width: ${({ width }) => width || 'auto'};
@@ -80,8 +81,8 @@ const Container = styled.div<ContainerProps>`
 
 const Label = styled.label`
   font-size: 16px;
-  font-weight: 500;
-  color: ${colors.grayText};
+  font-weight: ${fontWeights.medium};
+  color: ${colors.textSecondary};
   white-space: nowrap;
 `;
 

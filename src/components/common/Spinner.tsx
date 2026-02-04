@@ -24,6 +24,10 @@ const rotate = keyframes`
 
 const SpinnerCss = css`
   animation: 0.7s ${rotate} linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `;
 
 export const SpinnerSVG = styled.svg`

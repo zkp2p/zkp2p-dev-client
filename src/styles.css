@@ -1,5 +1,5 @@
 .App {
-  font-family: Graphik;
+  font-family: var(--peer-font-body, 'Inter', sans-serif);
   text-align: center;
 }
 
@@ -26,13 +26,16 @@ textarea {
 }
 
 h1 {
-  font-weight: 300;
-  line-height: 1.1;
+  font-family: var(--peer-font-headline, 'PP Valve', sans-serif);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  line-height: 0.9;
 }
 
 html {
-  background: #171717 !important;
-  color: #fff;
+  background: var(--peer-black, #000000) !important;
+  color: var(--peer-white, #ffffff);
 }
 
 body {
