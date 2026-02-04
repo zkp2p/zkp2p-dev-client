@@ -1349,6 +1349,8 @@ const MetadataInfo = styled.div`
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0;
+  word-break: break-word;
 `;
 
 const ProofContainer = styled.div`
