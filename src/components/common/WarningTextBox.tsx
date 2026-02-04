@@ -38,7 +38,7 @@ export const WarningTextBox: React.FC<WarningTextBoxProps> = ({
     <Container $type={type} $size={size}>
       <IconAndTextContainer>
         <IconContainer $size={iconContainerSize}>
-          <Icon size={iconSize} color={color} />
+          <Icon size={iconSize} color={color} aria-hidden="true" />
         </IconContainer>
         <ThemedText.BodySmall style={{ color, fontSize, lineHeight: '1.5' }}>
           {text}
@@ -51,7 +51,7 @@ export const WarningTextBox: React.FC<WarningTextBoxProps> = ({
           $size={closeIconContainerSize}
           aria-label="Close"
         >
-          <X size={closeIconSize} color={color} />
+          <X size={closeIconSize} color={color} aria-hidden="true" />
         </CloseButton>
       )}
     </Container>

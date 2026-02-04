@@ -36,12 +36,15 @@ export const SimpleInput: React.FC<SimpleInputProps> = ({
           <StyledInput
             type={type}
             id={name}
+            name={name}
+            aria-label={label}
             placeholder={placeholder}
             value={value}
             onChange={onChange}
             onFocus={onFocus}
             onKeyDown={onKeyDown}
             readOnly={readOnly}
+            autoComplete="off"
           />
         </InputWrapper>
       </LabelAndInputContainer>

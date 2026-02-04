@@ -31,7 +31,7 @@ export const HorizontalInput: React.FC<HorizontalInputProps> = ({
 }) => {
   return (
     <Container width={width}>
-      <Label>{label}</Label>
+      <Label htmlFor={name}>{label}</Label>
       <InputContainer>
         <StyledInput
           type={type}
@@ -42,6 +42,7 @@ export const HorizontalInput: React.FC<HorizontalInputProps> = ({
           onChange={onChange}
           readOnly={readOnly}
           valueFontSize={valueFontSize}
+          autoComplete="off"
         />
         {inputLabel && (
           <InputLabel>

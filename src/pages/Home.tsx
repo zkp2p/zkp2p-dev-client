@@ -716,6 +716,7 @@ const Home: React.FC = () => {
                 <ProofTextArea
                   value={resultProof}
                   onChange={(e) => handlePastedProofChange(e.target.value)}
+                  aria-label="Proof JSON"
                   placeholder='Paste your proof JSON here…&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { ... },&#10;    "signatures": { ... }&#10;  }&#10;}'
                 />
                 {proofStatus === 'success' && (
@@ -749,7 +750,11 @@ const Home: React.FC = () => {
                         </>
                       }
                     </ThemedText.BodySecondary>
-                    <ProofTextArea readOnly value={resultProof} />
+                    <ProofTextArea
+                      readOnly
+                      value={resultProof}
+                      aria-label="Generated proof JSON"
+                    />
                   </>
                 )}
                 {proofStatus === 'timeout' && (
@@ -851,7 +856,7 @@ const Home: React.FC = () => {
                               value={calldataInputs.intentAmount}
                               onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
                               valueFontSize="14px"
-                              placeholder="Amount (wei)"
+                              placeholder="e.g. 1000000…"
                             />
                             <Input
                               label="Timestamp (sec)"
@@ -859,7 +864,7 @@ const Home: React.FC = () => {
                               value={calldataInputs.intentTimestamp}
                               onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
                               valueFontSize="14px"
-                              placeholder="Unix timestamp"
+                              placeholder="e.g. 1712345678…"
                             />
                             <Input
                               label="Payee Details (bytes32)"
@@ -883,7 +888,7 @@ const Home: React.FC = () => {
                               value={calldataInputs.conversionRate}
                               onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
                               valueFontSize="14px"
-                              placeholder="Rate"
+                              placeholder="e.g. 1.00…"
                             />
                             <Input
                               label="Payment Method (bytes32)"
@@ -899,7 +904,7 @@ const Home: React.FC = () => {
                               value={verifyingContract}
                               onChange={(e) => setVerifyingContract(e.target.value)}
                               valueFontSize="12px"
-                              placeholder="0x16b3e4a3CA36D3A4bCA281767f15C7ADeF4ab163"
+                              placeholder="e.g. 0x16b3…"
                             />
                             <Input
                               label="Post Intent Hook Data (bytes)"
@@ -907,7 +912,7 @@ const Home: React.FC = () => {
                               value={postIntentHookData}
                               onChange={(e) => setPostIntentHookData(e.target.value)}
                               valueFontSize="12px"
-                              placeholder="0x"
+                              placeholder="0x…"
                             />
                           </CalldataInputsGrid>
                         </CalldataInputsContainer>
@@ -944,7 +949,11 @@ const Home: React.FC = () => {
                       <ThemedText.BodySecondary>
                         ✅ Attestation Response:
                       </ThemedText.BodySecondary>
-                      <AttestationResponseArea readOnly value={attestationResponse} />
+                      <AttestationResponseArea
+                        readOnly
+                        value={attestationResponse}
+                        aria-label="Attestation response"
+                      />
                     </AttestationResultSection>
                   )}
                   {attestationError && (
@@ -967,7 +976,8 @@ const Home: React.FC = () => {
                           <CalldataTextArea
                             readOnly
                             value={generatedCalldata}
-                            placeholder="Generated fulfillIntent params will appear here"
+                            aria-label="Fulfill intent calldata"
+                            placeholder="Generated fulfillIntent params will appear here…"
                           />
                         </>
                       )}
@@ -1401,7 +1411,7 @@ const IconButton = styled.button`
   }
 `;
 
-const StyledChevronRight = styled(ChevronRight)`
+const StyledChevronRight = styled(ChevronRight).attrs({ 'aria-hidden': true })`
   width: 16px;
   height: 16px;
   color: ${colors.white};

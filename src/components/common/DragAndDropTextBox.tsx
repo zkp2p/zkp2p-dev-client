@@ -25,6 +25,8 @@ export const DragAndDropTextBox: React.FC<Props> = ({onFileDrop}) => {
 			onDragOver={handleDragOver}
 			onDragEnd={handleDragEnd}
 			onDrop={(e) => handleDrop(e, onFileDrop)}
+			aria-live="polite"
+			role="status"
 		>
 			{dragging ? (
 				<div>Drop here</div>

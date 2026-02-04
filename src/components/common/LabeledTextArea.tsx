@@ -1,5 +1,5 @@
 import _ from "lodash";
-import React, { CSSProperties } from "react";
+import React, { CSSProperties, useId } from "react";
 import styled from "styled-components";
 
 import { Col } from "@components/common/Layout";
@@ -36,12 +36,14 @@ export const LabeledTextArea: React.FC<{
   height = '16vh',
   showCopyButton = false
 }) => {
+  const textAreaId = useId();
+  const textAreaName = label ? label.replace(/\s+/g, "-").toLowerCase() : undefined;
   return (
     <LabeledTextAreaContainer
       className={_.compact(["labeledTextAreaContainer", className]).join(" ")}
       height={height}
     >
-      <Label isEmpty={!label}>{label}</Label>
+      <Label htmlFor={textAreaId} isEmpty={!label}>{label}</Label>
       {warning && (
         <span className="warning" style={{ color: warningColor }}>
           {warning}
@@ -51,6 +53,9 @@ export const LabeledTextArea: React.FC<{
         <TextArea
           style={style}
           aria-label={label} 
+          id={textAreaId}
+          name={textAreaName}
+          autoComplete="off"
           title={disabled ? disabledReason : ""}
           placeholder={placeholder}
           disabled={disabled}

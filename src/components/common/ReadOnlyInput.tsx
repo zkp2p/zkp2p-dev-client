@@ -1,3 +1,4 @@
+import React, { useId } from "react";
 import styled from "styled-components";
 import { colors, radii, fontWeights } from "@theme/colors";
 
@@ -5,12 +6,21 @@ export const ReadOnlyInput: React.FC<{
   label: string;
   value: any;
 }> = ({ label, value }) => {
+  const inputId = useId();
+  const inputName = label.replace(/\s+/g, "-").toLowerCase();
   return (
     <InputContainer>
-      <Label>
+      <Label htmlFor={inputId}>
         {label}
       </Label>
-      <Input value={value} placeholder={label} readOnly={true} />
+      <Input
+        id={inputId}
+        name={inputName}
+        value={value}
+        placeholder={label}
+        readOnly={true}
+        autoComplete="off"
+      />
     </InputContainer>
   );
 };

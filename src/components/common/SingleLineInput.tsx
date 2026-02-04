@@ -1,8 +1,10 @@
+import React, { useId } from "react";
 import styled from "styled-components";
 import { colors, radii, fontWeights } from "@theme/colors";
 
 export const SingleLineInput: React.FC<{
   label: string;
+  name?: string;
   value: any;
   placeholder: string;
   onChange: (e: any) => void;
@@ -10,15 +12,19 @@ export const SingleLineInput: React.FC<{
   error?: string | null;
 }> = ({
   label,
+  name,
   value,
   placeholder,
   onChange,
   readOnly = false,
   error = null,
 }) => {
+  const inputId = useId();
+  const inputName = name || label.replace(/\s+/g, "-").toLowerCase();
   return (
     <InputContainer>
       <label
+        htmlFor={inputId}
         style={{
           color: colors.textSecondary,
           fontWeight: fontWeights.medium,
@@ -27,11 +33,15 @@ export const SingleLineInput: React.FC<{
         {label}
       </label>
       <Input
+        id={inputId}
+        name={inputName}
         onChange={onChange}
         value={value}
         placeholder={placeholder}
         readOnly={readOnly}
         hasError={!!error}
+        autoComplete="off"
+        aria-invalid={!!error}
       />
       { error &&
         <ErrorMessage>
