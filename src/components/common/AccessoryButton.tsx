@@ -298,56 +298,56 @@ const LoadingLabel = styled.span`
   font-weight: ${fontWeights.semibold};
 `;
 
-const StyledSend = styled(Send)`
+const StyledSend = styled(Send).attrs({ 'aria-hidden': true })`
   width: 12px;
   height: 12px;
   color: ${peer.white};
 `;
 
-const StyledChevronRight = styled(ChevronRight)`
+const StyledChevronRight = styled(ChevronRight).attrs({ 'aria-hidden': true })`
   width: 18px;
   height: 18px;
   color: ${peer.textSecondary};
   margin-right: -4px;
 `;
 
-const StyledLogOut = styled(LogOut)`
+const StyledLogOut = styled(LogOut).attrs({ 'aria-hidden': true })`
   width: 15px;
   height: 15px;
   color: ${peer.textSecondary};
 `;
 
-const StyledRefresh = styled(RefreshCw)`
+const StyledRefresh = styled(RefreshCw).attrs({ 'aria-hidden': true })`
   width: 15px;
   height: 15px;
   color: ${peer.textSecondary};
 `;
 
-const StyledTrash = styled(Trash2)`
+const StyledTrash = styled(Trash2).attrs({ 'aria-hidden': true })`
   width: 13px;
   height: 13px;
   color: ${peer.textSecondary};
 `;
 
-const StyledUnlock = styled(Unlock)`
+const StyledUnlock = styled(Unlock).attrs({ 'aria-hidden': true })`
   width: 14px;
   height: 14px;
   color: ${peer.textSecondary};
 `;
 
-const StyledUserX = styled(UserX)`
+const StyledUserX = styled(UserX).attrs({ 'aria-hidden': true })`
   width: 15px;
   height: 15px;
   color: ${peer.textSecondary};
 `;
 
-const StyledPlus = styled(Plus)`
+const StyledPlus = styled(Plus).attrs({ 'aria-hidden': true })`
   width: 15px;
   height: 15px;
   color: ${peer.textSecondary};
 `;
 
-const StyledMinus = styled(Minus)`
+const StyledMinus = styled(Minus).attrs({ 'aria-hidden': true })`
   width: 15px;
   height: 15px;
   color: ${peer.textSecondary};
