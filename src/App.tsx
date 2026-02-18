@@ -1,14 +1,10 @@
-import React from 'react';
-import {
-  BrowserRouter as Router,
-  Route,
-  Routes
-} from "react-router-dom";
+import React from "react";
+import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 
 import { Home } from "./pages/Home";
-import { TopNav } from '@components/layouts/TopNav';
+import { TopNav } from "@components/layouts/TopNav";
 
-import ExtensionProxyProofsProvider from './contexts/ExtensionProxyProofs/ExtensionProxyProofsProvider';
+import ExtensionProxyProofsProvider from "./contexts/ExtensionProxyProofs/ExtensionProxyProofsProvider";
 
 import "./App.css";
 import "./styles.css";
@@ -40,16 +36,16 @@ type ChildrenType = {
   children: Array<React.ElementType>;
 };
 
-export const buildProvidersTree = (
-  componentsWithProps: Array<ProvidersType>,
-) => {
-  const initialComponent = ({children}: {children: React.ReactNode}) => <>{children}</>;
+const buildProvidersTree = (componentsWithProps: Array<ProvidersType>) => {
+  const initialComponent = ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  );
   return componentsWithProps.reduce(
     (
       AccumulatedComponents: React.ElementType,
-      [Provider, props = {}]: ProvidersType,
+      [Provider, props = {}]: ProvidersType
     ) => {
-      return ({children}: ChildrenType) => {
+      return ({ children }: ChildrenType) => {
         return (
           <AccumulatedComponents>
             <Provider {...props}>{children}</Provider>
@@ -57,7 +53,7 @@ export const buildProvidersTree = (
         );
       };
     },
-    initialComponent,
+    initialComponent
   );
 };
 
@@ -73,6 +69,6 @@ interface ProvidersProps {
 
 const Providers: React.FC<ProvidersProps> = ({ children }) => {
   return <ProviderTree>{children}</ProviderTree>;
-}
+};
 
 export default App;

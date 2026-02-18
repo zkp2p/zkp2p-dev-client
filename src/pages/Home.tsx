@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import styled from 'styled-components';
-import { browserName } from 'react-device-detect';
-import { ThemedText } from '@theme/text';
+import React, { useState, useEffect, useRef } from "react";
+import styled from "styled-components";
+import { browserName } from "react-device-detect";
+import { ThemedText } from "@theme/text";
 import {
   colors,
   opacify,
@@ -10,38 +10,47 @@ import {
   fontWeights,
   letterSpacing,
   lineHeights,
-} from '@theme/colors';
-import { Button } from '@components/common/Button';
-import { Input } from '@components/common/Input';
-import useExtensionProxyProofs from '@hooks/contexts/useExtensionProxyProofs';
-import { ExtensionRequestMetadata, ProofGenerationStatusType } from '@helpers/types';
-import chromeSvg from '../assets/images/browsers/chrome.svg';
-import braveSvg from '../assets/images/browsers/brave.svg';
-import { AccessoryButton } from '@components/common/AccessoryButton';
-import Spinner from '@components/common/Spinner';
-import { ChevronRight } from 'react-feather';
-import { ethers } from 'ethers';
-import { keccak256 } from '@helpers/keccack';
-import { getDefaultVerifier, fetchIntentDetails, normalizeHex32, hexToDecimal } from '@helpers/contracts';
+} from "@theme/colors";
+import { Button } from "@components/common/Button";
+import { Input } from "@components/common/Input";
+import useExtensionProxyProofs from "@hooks/contexts/useExtensionProxyProofs";
+import {
+  ExtensionRequestMetadata,
+  ProofGenerationStatusType,
+} from "@helpers/types";
+import chromeSvg from "../assets/images/browsers/chrome.svg";
+import braveSvg from "../assets/images/browsers/brave.svg";
+import { AccessoryButton } from "@components/common/AccessoryButton";
+import Spinner from "@components/common/Spinner";
+import { ChevronRight } from "react-feather";
+import { ethers } from "ethers";
+import { keccak256 } from "@helpers/keccack";
+import {
+  getDefaultVerifier,
+  fetchIntentDetails,
+  normalizeHex32,
+  hexToDecimal,
+} from "@helpers/contracts";
 
-const CHROME_EXTENSION_URL = 'https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih';
+const CHROME_EXTENSION_URL =
+  "https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih";
 const PROOF_FETCH_INTERVAL = 3000;
 const PROOF_GENERATION_TIMEOUT = 60000;
 
 // Default calldata inputs stored at module scope (strict, visible defaults)
 const DEFAULT_CALLDATA_INPUTS = {
-  intentAmount: '0',
-  intentTimestamp: '0',
+  intentAmount: "0",
+  intentTimestamp: "0",
   payeeDetails:
-    '0x0000000000000000000000000000000000000000000000000000000000000000',
-  fiatCurrency: keccak256('USD'),
-  conversionRate: '0',
+    "0x0000000000000000000000000000000000000000000000000000000000000000",
+  fiatCurrency: keccak256("USD"),
+  conversionRate: "0",
 };
 
 // Helper: derive platform (e.g., "venmo") from action type (e.g., "transfer_venmo").
 const derivePlatformFromActionType = (action: string, fallback: string) => {
   if (!action) return fallback;
-  const parts = action.split('_');
+  const parts = action.split("_");
   return parts.length > 1 ? parts[parts.length - 1] : fallback;
 };
 
@@ -85,62 +94,75 @@ const StepLabel = styled.div`
 
 const Home: React.FC = () => {
   const [intentHash, setIntentHash] = useState(() => {
-    return localStorage.getItem('intentHash') || '0x';
+    return localStorage.getItem("intentHash") || "0x";
   });
   const [actionType, setActionType] = useState(() => {
-    return localStorage.getItem('actionType') || 'transfer_venmo';
+    return localStorage.getItem("actionType") || "transfer_venmo";
   });
   const [paymentPlatform, setPaymentPlatform] = useState(() => {
-    return localStorage.getItem('paymentPlatform') || 'venmo';
+    return localStorage.getItem("paymentPlatform") || "venmo";
   });
   const [metadataPlatform, setMetadataPlatform] = useState(() => {
-    const initialPaymentPlatform = localStorage.getItem('paymentPlatform') || 'venmo';
-    const initialActionType = localStorage.getItem('actionType') || 'transfer_venmo';
-    return derivePlatformFromActionType(initialActionType, initialPaymentPlatform);
+    const initialPaymentPlatform =
+      localStorage.getItem("paymentPlatform") || "venmo";
+    const initialActionType =
+      localStorage.getItem("actionType") || "transfer_venmo";
+    return derivePlatformFromActionType(
+      initialActionType,
+      initialPaymentPlatform
+    );
   });
   const [proofIndex, setProofIndex] = useState<number>(0);
   const [isInstallClicked, setIsInstallClicked] = useState(false);
 
   const [selectedMetadata, setSelectedMetadata] =
     useState<ExtensionRequestMetadata | null>(null);
-  const [proofStatus, setProofStatus] = useState<ProofGenerationStatusType>('idle');
-  const [resultProof, setResultProof] = useState('');
+  const [proofStatus, setProofStatus] =
+    useState<ProofGenerationStatusType>("idle");
+  const [resultProof, setResultProof] = useState("");
   const [isPasteMode, setIsPasteMode] = useState(false);
-  const [proofGenerationStartTime, setProofGenerationStartTime] = useState<number | null>(null);
-  const [proofGenerationDuration, setProofGenerationDuration] = useState<number | null>(null);
-  const [attestationResponse, setAttestationResponse] = useState<string | null>(null);
+  const [proofGenerationStartTime, setProofGenerationStartTime] = useState<
+    number | null
+  >(null);
+  const [proofGenerationDuration, setProofGenerationDuration] = useState<
+    number | null
+  >(null);
+  const [attestationResponse, setAttestationResponse] = useState<string | null>(
+    null
+  );
   const [attestationLoading, setAttestationLoading] = useState(false);
   const [attestationError, setAttestationError] = useState<string | null>(null);
   const [chainId, setChainId] = useState<number>(() => {
-    const stored = localStorage.getItem('chainId');
+    const stored = localStorage.getItem("chainId");
     return stored ? parseInt(stored) : 84532;
   });
   const [verifyingContract, setVerifyingContract] = useState<string>(() => {
-    const stored = localStorage.getItem('verifyingContract');
+    const stored = localStorage.getItem("verifyingContract");
     const byChain = getDefaultVerifier(84532);
     return stored || byChain;
   });
   const [attestationBaseUrl, setAttestationBaseUrl] = useState<string>(() => {
-    const stored = localStorage.getItem('attestationBaseUrl');
-    return stored || 'https://attestation-service.zkp2p.xyz';
+    const stored = localStorage.getItem("attestationBaseUrl");
+    return stored || "https://attestation-service.zkp2p.xyz";
   });
 
-  const [triggerProofFetchPolling, setTriggerProofFetchPolling] = useState(false);
+  const [triggerProofFetchPolling, setTriggerProofFetchPolling] =
+    useState(false);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
   // Input changes no longer used (auto-fetched intent); keep for completeness
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [generatedCalldata, setGeneratedCalldata] = useState<string>('');
+  const [generatedCalldata, setGeneratedCalldata] = useState<string>("");
   const [calldataError, setCalldataError] = useState<string | null>(null);
   // Step 4 independent intent hash for verification
-  const [verifyIntentHash, setVerifyIntentHash] = useState<string>('');
+  const [verifyIntentHash, setVerifyIntentHash] = useState<string>("");
   const [isIntentAdvancedOpen, setIsIntentAdvancedOpen] = useState(false);
   const [fetchIntentLoading, setFetchIntentLoading] = useState(false);
   const [fetchIntentError, setFetchIntentError] = useState<string | null>(null);
-  const [paymentMethodHex, setPaymentMethodHex] = useState<string>('');
-  const [postIntentHookData, setPostIntentHookData] = useState<string>('0x');
+  const [paymentMethodHex, setPaymentMethodHex] = useState<string>("");
+  const [postIntentHookData, setPostIntentHookData] = useState<string>("0x");
 
   // No localStorage persistence; inputs always reflect actual defaults or user edits
 
@@ -160,15 +182,15 @@ const Home: React.FC = () => {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('chainId', chainId.toString());
+    localStorage.setItem("chainId", chainId.toString());
   }, [chainId]);
 
   useEffect(() => {
-    localStorage.setItem('verifyingContract', verifyingContract);
+    localStorage.setItem("verifyingContract", verifyingContract);
   }, [verifyingContract]);
 
   useEffect(() => {
-    localStorage.setItem('attestationBaseUrl', attestationBaseUrl);
+    localStorage.setItem("attestationBaseUrl", attestationBaseUrl);
   }, [attestationBaseUrl]);
 
   useEffect(() => {
@@ -178,18 +200,18 @@ const Home: React.FC = () => {
   useEffect(() => {
     try {
       const hex = normalizeHex32(intentHash);
-      localStorage.setItem('intentHash', hex);
+      localStorage.setItem("intentHash", hex);
     } catch {
-      localStorage.setItem('intentHash', intentHash);
+      localStorage.setItem("intentHash", intentHash);
     }
   }, [intentHash]);
 
   useEffect(() => {
-    localStorage.setItem('actionType', actionType);
+    localStorage.setItem("actionType", actionType);
   }, [actionType]);
 
   useEffect(() => {
-    localStorage.setItem('paymentPlatform', paymentPlatform);
+    localStorage.setItem("paymentPlatform", paymentPlatform);
   }, [paymentPlatform]);
 
   // Auto-select verifier by chain (Base Sepolia / Base)
@@ -206,29 +228,29 @@ const Home: React.FC = () => {
     setMetadataPlatform((prev) => (prev !== derived ? derived : prev));
   }, [actionType, paymentPlatform]);
 
-
   useEffect(() => {
     if (!paymentProof) return;
-    if (paymentProof.status === 'success') {
-      setProofStatus('success');
+    if (paymentProof.status === "success") {
+      setProofStatus("success");
       setResultProof(JSON.stringify(paymentProof, null, 2));
       setTriggerProofFetchPolling(false);
       if (proofGenerationStartTime) {
         setProofGenerationDuration(Date.now() - proofGenerationStartTime);
       }
-    } else if (paymentProof.status === 'error') {
-      setProofStatus('error');
+    } else if (paymentProof.status === "error") {
+      setProofStatus("error");
       setResultProof(JSON.stringify(paymentProof, null, 2));
       setTriggerProofFetchPolling(false);
     } else {
       // keep status "generating"
-      setProofStatus('generating');
+      setProofStatus("generating");
     }
   }, [paymentProof, proofGenerationStartTime]);
 
-  useEffect(() => {
-    if (triggerProofFetchPolling && paymentPlatform) {
-      if (intervalId) clearInterval(intervalId);
+  useEffect(
+    () => {
+      if (triggerProofFetchPolling && paymentPlatform) {
+        if (intervalId) clearInterval(intervalId);
         const id = setInterval(() => {
           fetchPaymentProof(paymentPlatform);
         }, PROOF_FETCH_INTERVAL);
@@ -237,7 +259,7 @@ const Home: React.FC = () => {
         proofTimeoutRef.current = setTimeout(() => {
           clearInterval(id);
           setTriggerProofFetchPolling(false);
-          setProofStatus('timeout');
+          setProofStatus("timeout");
         }, PROOF_GENERATION_TIMEOUT);
 
         return () => {
@@ -251,7 +273,7 @@ const Home: React.FC = () => {
   );
 
   useEffect(() => {
-    if (proofStatus !== 'generating' && intervalId) {
+    if (proofStatus !== "generating" && intervalId) {
       clearInterval(intervalId);
       setIntervalId(null);
       setTriggerProofFetchPolling(false);
@@ -263,40 +285,44 @@ const Home: React.FC = () => {
   }, [proofStatus, intervalId]);
 
   const handleInstall = () => {
-    window.open(CHROME_EXTENSION_URL, '_blank');
+    window.open(CHROME_EXTENSION_URL, "_blank");
     setIsInstallClicked(true);
   };
 
-  const handlePaymentPlatformChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePaymentPlatformChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const newValue = event.target.value;
     setPaymentPlatform(newValue);
     setMetadataPlatform(newValue);
   };
 
-  const handleMetadataPlatformChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMetadataPlatformChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const newValue = event.target.value;
     setMetadataPlatform(newValue);
   };
 
   const handleOpenSettings = () => {
-    openSidebar('/settings');
+    openSidebar("/settings");
   };
 
   const handleAuthenticate = () => {
     if (!intentHash || !actionType || !paymentPlatform) {
-      alert('Please fill out all fields');
+      alert("Please fill out all fields");
       return;
     }
     openNewTab(actionType, paymentPlatform);
     setSelectedMetadata(null);
-    setProofStatus('idle');
-    setResultProof('');
+    setProofStatus("idle");
+    setResultProof("");
   };
 
   const handleGenerateProof = (meta: ExtensionRequestMetadata) => {
     setSelectedMetadata(meta);
-    setProofStatus('generating');
-    setResultProof('');
+    setProofStatus("generating");
+    setResultProof("");
     setProofGenerationStartTime(Date.now());
     setProofGenerationDuration(null);
     setAttestationResponse(null);
@@ -315,7 +341,12 @@ const Home: React.FC = () => {
     resetProofState();
     // Extension expects decimal intent hash; convert from hex
     const intentForProof = hexToDecimal(intentHash);
-    generatePaymentProof(metadataPlatform, intentForProof, meta.originalIndex, proofIndex);
+    generatePaymentProof(
+      metadataPlatform,
+      intentForProof,
+      meta.originalIndex,
+      proofIndex
+    );
 
     setTriggerProofFetchPolling(true);
   };
@@ -332,13 +363,15 @@ const Home: React.FC = () => {
       const proofClaim = proofData.proof?.claim || proofData.claim;
 
       if (!proofClaim) {
-        throw new Error('No proof claim found in the generated proof');
+        throw new Error("No proof claim found in the generated proof");
       }
 
       // Normalize to bytes32 using Step 4 hash
       const intentHashHex = normalizeHex32(verifyIntentHash);
       const amount = calldataInputs.intentAmount;
-      const timestampSec = ethers.BigNumber.from(calldataInputs.intentTimestamp || '0');
+      const timestampSec = ethers.BigNumber.from(
+        calldataInputs.intentTimestamp || "0"
+      );
       const timestampMs = timestampSec.mul(1000).toString();
       const paymentMethod = paymentMethodHex || keccak256(paymentPlatform);
       const fiatCurrency = calldataInputs.fiatCurrency;
@@ -346,7 +379,7 @@ const Home: React.FC = () => {
       const payeeDetails = calldataInputs.payeeDetails;
 
       const payload = {
-        proofType: 'reclaim',
+        proofType: "reclaim",
         proof: JSON.stringify({
           claim: proofClaim,
           signatures: proofData.proof?.signatures || proofData.signatures || {},
@@ -361,18 +394,18 @@ const Home: React.FC = () => {
           fiatCurrency,
           conversionRate,
           payeeDetails,
-          timestampBufferMs: '10000000',
+          timestampBufferMs: "10000000",
         },
       };
 
-      console.log('Payload:', payload);
+      console.log("Payload:", payload);
 
       const endpoint = `${attestationBaseUrl}/verify/${paymentPlatform}/transfer_${metadataPlatform}`;
 
       const response = await fetch(endpoint, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
       });
@@ -381,69 +414,87 @@ const Home: React.FC = () => {
 
       if (!response.ok) {
         throw new Error(
-          responseData.error || `HTTP error! status: ${response.status} ${responseData.message}`
+          responseData.error ||
+            `HTTP error! status: ${response.status} ${responseData.message}`
         );
       }
 
       setAttestationResponse(JSON.stringify(responseData, null, 2));
     } catch (error) {
-      console.error('Error sending to attestation service:', error);
-      setAttestationError(error instanceof Error ? error.message : 'Unknown error');
+      console.error("Error sending to attestation service:", error);
+      setAttestationError(
+        error instanceof Error ? error.message : "Unknown error"
+      );
     } finally {
       setAttestationLoading(false);
     }
   };
 
-  const browserSvgIcon = () =>
-    browserName === 'Brave' ? braveSvg : chromeSvg;
+  const browserSvgIcon = () => (browserName === "Brave" ? braveSvg : chromeSvg);
   const addToBrowserText = () =>
-    browserName === 'Brave' ? 'Add to Brave' : 'Add to Chrome';
+    browserName === "Brave" ? "Add to Brave" : "Add to Chrome";
 
-  const encodePaymentAttestation = (attestationResponse: any, intentHashFallback?: string) => {
+  const encodePaymentAttestation = (
+    attestationResponse: any,
+    intentHashFallback?: string
+  ) => {
     const abi = new ethers.utils.AbiCoder();
     const resp = attestationResponse.responseObject ?? attestationResponse;
     const td = resp.typedDataValue || resp.typedData || {};
     const signatures: string[] = Array.isArray(resp.signatures)
       ? resp.signatures
-      : (resp.signature ? [resp.signature] : []);
+      : resp.signature
+      ? [resp.signature]
+      : [];
 
     const rawIntentHash = td.intentHash || intentHashFallback;
     if (!rawIntentHash) {
-      throw new Error('Attestation response missing intent hash');
+      throw new Error("Attestation response missing intent hash");
     }
     const intentHash = normalizeHex32(rawIntentHash);
     const releaseAmount = td.releaseAmount ?? resp.releaseAmount;
     const dataHash: string = td.dataHash ?? resp.dataHash;
     const encodedPaymentDetails: string = resp.encodedPaymentDetails;
-    const metadata: string = resp.metadata || td.metadata || '0x';
+    const metadata: string = resp.metadata || td.metadata || "0x";
 
     if (releaseAmount == null || !dataHash || !encodedPaymentDetails) {
-      throw new Error('Attestation response missing required fields');
+      throw new Error("Attestation response missing required fields");
     }
 
     return abi.encode(
-      ['tuple(bytes32,uint256,bytes32,bytes[],bytes,bytes)'],
-      [[intentHash, ethers.BigNumber.from(releaseAmount), dataHash, signatures, encodedPaymentDetails, metadata]]
+      ["tuple(bytes32,uint256,bytes32,bytes[],bytes,bytes)"],
+      [
+        [
+          intentHash,
+          ethers.BigNumber.from(releaseAmount),
+          dataHash,
+          signatures,
+          encodedPaymentDetails,
+          metadata,
+        ],
+      ]
     );
   };
 
   const resolveVerificationData = (respObj: any) => {
     if (respObj?.verificationData) return respObj.verificationData;
-    const signer = respObj?.signer || respObj?.attestorAddress || respObj?.attestor;
+    const signer =
+      respObj?.signer || respObj?.attestorAddress || respObj?.attestor;
     if (!signer) {
-      throw new Error('Attestation response missing verification data');
+      throw new Error("Attestation response missing verification data");
     }
-    return ethers.utils.defaultAbiCoder.encode(['address'], [signer]);
+    return ethers.utils.defaultAbiCoder.encode(["address"], [signer]);
   };
 
   // Function to generate fulfillIntent params
   const handleGenerateCalldata = () => {
     try {
       setCalldataError(null);
-      setGeneratedCalldata('');
-      
+      setGeneratedCalldata("");
+
       // Validate required inputs
-      if (!attestationResponse) throw new Error('Please generate an attestation first');
+      if (!attestationResponse)
+        throw new Error("Please generate an attestation first");
 
       // Parse attestation response
       const parsedAttestation = JSON.parse(attestationResponse);
@@ -452,13 +503,18 @@ const Home: React.FC = () => {
 
       const rawIntentHash = td.intentHash || verifyIntentHash;
       if (!rawIntentHash) {
-        throw new Error('Missing intent hash for fulfillIntent params');
+        throw new Error("Missing intent hash for fulfillIntent params");
       }
       const intentHashHex = normalizeHex32(rawIntentHash);
 
-      const paymentProof = encodePaymentAttestation(parsedAttestation, intentHashHex);
+      const paymentProof = encodePaymentAttestation(
+        parsedAttestation,
+        intentHashHex
+      );
       const verificationData = resolveVerificationData(respObj);
-      const postIntentHookDataHex = postIntentHookData?.trim() ? postIntentHookData : '0x';
+      const postIntentHookDataHex = postIntentHookData?.trim()
+        ? postIntentHookData
+        : "0x";
 
       const fulfillIntentParams = {
         paymentProof,
@@ -469,8 +525,10 @@ const Home: React.FC = () => {
 
       setGeneratedCalldata(JSON.stringify(fulfillIntentParams, null, 2));
     } catch (error) {
-      console.error('Error generating fulfillIntent params:', error);
-      setCalldataError(error instanceof Error ? error.message : 'Unknown error');
+      console.error("Error generating fulfillIntent params:", error);
+      setCalldataError(
+        error instanceof Error ? error.message : "Unknown error"
+      );
     }
   };
 
@@ -490,13 +548,13 @@ const Home: React.FC = () => {
         const parsed = JSON.parse(value);
         // Check if it has the expected proof structure
         if (parsed.proof?.claim || parsed.claim) {
-          setProofStatus('success');
+          setProofStatus("success");
         }
       } catch {
         // Not valid JSON yet, keep current status
       }
     } else {
-      setProofStatus('idle');
+      setProofStatus("idle");
     }
   };
 
@@ -505,8 +563,8 @@ const Home: React.FC = () => {
     setIsPasteMode(!isPasteMode);
     if (!isPasteMode) {
       // Entering paste mode - reset proof state
-      setResultProof('');
-      setProofStatus('idle');
+      setResultProof("");
+      setProofStatus("idle");
       setAttestationResponse(null);
       setAttestationError(null);
     }
@@ -534,7 +592,7 @@ const Home: React.FC = () => {
       });
       setPaymentMethodHex(onchain.paymentMethod);
     } catch (e: any) {
-      setFetchIntentError(e?.message || 'Failed to fetch intent from chain');
+      setFetchIntentError(e?.message || "Failed to fetch intent from chain");
     } finally {
       setFetchIntentLoading(false);
     }
@@ -544,142 +602,143 @@ const Home: React.FC = () => {
     <PageWrapper>
       <MainContent>
         <AppContainer>
-        <LeftPanel>
-          <Section>
-            <StepIndicator>
-              <StepNumber>1</StepNumber>
-              <StepLabel>Enter Provider</StepLabel>
-            </StepIndicator>
-            <StatusItem>
-              <StatusLabel>Version:</StatusLabel>
-              <StatusValue>
-                {isSidebarInstalled ? sideBarVersion : 'Not Installed'}
-              </StatusValue>
-              <IconButton 
-                onClick={handleOpenSettings}
-                disabled={proofStatus === 'generating'}
-                title="Open Settings"
-              >
-                Open Settings
-                <StyledChevronRight />
-              </IconButton>
-            </StatusItem>
-            <Input
-              label="Intent Hash"
-              name="intentHash"
-              value={intentHash}
-              onChange={(e) => {
-                const v = e.target.value;
-                // Allow empty, optional 0x, and hex digits (unprefixed ok)
-                if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) {
-                  setIntentHash(v);
-                }
-              }}
-              onBlur={() => {
-                try { setIntentHash(normalizeHex32(intentHash)); } catch {}
-              }}
-              valueFontSize="16px"
-            />
-            <Input
-              label="Action Type"
-              name="actionType"
-              value={actionType}
-              onChange={(e) => setActionType(e.target.value)}
-              valueFontSize="16px"
-            />
-            <Input
-              label="Payment Platform"
-              name="paymentPlatform"
-              value={paymentPlatform}
-              onChange={handlePaymentPlatformChange}
-              valueFontSize="16px"
-            />
-            <AdvancedSection>
-              <AdvancedHeader
-                type="button"
-                onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-                aria-expanded={isAdvancedOpen}
-                aria-controls="advanced-settings-panel"
-              >
-                <ThemedText.BodySmall>Advanced Settings</ThemedText.BodySmall>
-                <AdvancedChevron size={16} $expanded={isAdvancedOpen} />
-              </AdvancedHeader>
-              {isAdvancedOpen && (
-                <AdvancedContent id="advanced-settings-panel">
-                  <Input
-                    label="Metadata Group (e.g. zelle)"
-                    name="metadataPlatform"
-                    value={metadataPlatform}
-                    onChange={handleMetadataPlatformChange}
-                    valueFontSize="16px"
-                  />
-                  <Input
-                    label="Proof Index"
-                    name="proofIndex"
-                    value={proofIndex.toString()}
-                    onChange={(e) => setProofIndex(Number(e.target.value))}
-                    type="number"
-                    step="1"
-                    inputMode="numeric"
-                    valueFontSize="16px"
-                  />
-                </AdvancedContent>
-              )}
-            </AdvancedSection>
-            <ButtonContainer>
-              {isSidebarInstalled ? (
-                <Button
-                  onClick={handleAuthenticate}
-                  height={48}
-                  width={216}
-                  disabled={!isSidebarInstalled}
+          <LeftPanel>
+            <Section>
+              <StepIndicator>
+                <StepNumber>1</StepNumber>
+                <StepLabel>Enter Provider</StepLabel>
+              </StepIndicator>
+              <StatusItem>
+                <StatusLabel>Version:</StatusLabel>
+                <StatusValue>
+                  {isSidebarInstalled ? sideBarVersion : "Not Installed"}
+                </StatusValue>
+                <IconButton
+                  onClick={handleOpenSettings}
+                  disabled={proofStatus === "generating"}
+                  title="Open Settings"
                 >
-                  Authenticate
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleInstall}
-                  leftAccessorySvg={browserSvgIcon()}
-                  loading={isInstallClicked}
-                  disabled={isInstallClicked}
-                  height={48}
-                  width={216}
+                  Open Settings
+                  <StyledChevronRight />
+                </IconButton>
+              </StatusItem>
+              <Input
+                label="Intent Hash"
+                name="intentHash"
+                value={intentHash}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // Allow empty, optional 0x, and hex digits (unprefixed ok)
+                  if (v === "" || /^(0x)?[0-9a-fA-F]*$/.test(v)) {
+                    setIntentHash(v);
+                  }
+                }}
+                onBlur={() => {
+                  try {
+                    setIntentHash(normalizeHex32(intentHash));
+                  } catch {}
+                }}
+                valueFontSize="16px"
+              />
+              <Input
+                label="Action Type"
+                name="actionType"
+                value={actionType}
+                onChange={(e) => setActionType(e.target.value)}
+                valueFontSize="16px"
+              />
+              <Input
+                label="Payment Platform"
+                name="paymentPlatform"
+                value={paymentPlatform}
+                onChange={handlePaymentPlatformChange}
+                valueFontSize="16px"
+              />
+              <AdvancedSection>
+                <AdvancedHeader
+                  type="button"
+                  onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                  aria-expanded={isAdvancedOpen}
+                  aria-controls="advanced-settings-panel"
                 >
-                  {addToBrowserText()}
-                </Button>
-              )}
-            </ButtonContainer>
-          </Section>
-        </LeftPanel>
+                  <ThemedText.BodySmall>Advanced Settings</ThemedText.BodySmall>
+                  <AdvancedChevron size={16} $expanded={isAdvancedOpen} />
+                </AdvancedHeader>
+                {isAdvancedOpen && (
+                  <AdvancedContent id="advanced-settings-panel">
+                    <Input
+                      label="Metadata Group (e.g. zelle)"
+                      name="metadataPlatform"
+                      value={metadataPlatform}
+                      onChange={handleMetadataPlatformChange}
+                      valueFontSize="16px"
+                    />
+                    <Input
+                      label="Proof Index"
+                      name="proofIndex"
+                      value={proofIndex.toString()}
+                      onChange={(e) => setProofIndex(Number(e.target.value))}
+                      type="number"
+                      step="1"
+                      inputMode="numeric"
+                      valueFontSize="16px"
+                    />
+                  </AdvancedContent>
+                )}
+              </AdvancedSection>
+              <ButtonContainer>
+                {isSidebarInstalled ? (
+                  <Button
+                    onClick={handleAuthenticate}
+                    height={48}
+                    width={216}
+                    disabled={!isSidebarInstalled}
+                  >
+                    Authenticate
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleInstall}
+                    leftAccessorySvg={browserSvgIcon()}
+                    loading={isInstallClicked}
+                    disabled={isInstallClicked}
+                    height={48}
+                    width={216}
+                  >
+                    {addToBrowserText()}
+                  </Button>
+                )}
+              </ButtonContainer>
+            </Section>
+          </LeftPanel>
 
-        <MiddlePanel>
-          <Section>
-            <StepIndicator>
-              <StepNumber>2</StepNumber>
-              <StepLabel>Fetch Metadata</StepLabel>
-            </StepIndicator>
-            <StatusItem>
-              <StatusLabel>Available Metadata</StatusLabel>
-            </StatusItem>
-            {platformMetadata[metadataPlatform]?.metadata ? (
-              <MetadataList>
-                {platformMetadata[metadataPlatform].metadata.map(
-                  (m, idx) => (
+          <MiddlePanel>
+            <Section>
+              <StepIndicator>
+                <StepNumber>2</StepNumber>
+                <StepLabel>Fetch Metadata</StepLabel>
+              </StepIndicator>
+              <StatusItem>
+                <StatusLabel>Available Metadata</StatusLabel>
+              </StatusItem>
+              {platformMetadata[metadataPlatform]?.metadata ? (
+                <MetadataList>
+                  {platformMetadata[metadataPlatform].metadata.map((m, idx) => (
                     <MetadataItem
-                      key={idx}
+                      key={m.originalIndex}
                       selected={
                         selectedMetadata?.originalIndex === m.originalIndex
                       }
                     >
                       <MetadataInfo>
                         <ThemedText.BodySmall>
-                          Amount: {m.amount || 'N/A'}
+                          Amount: {m.amount || "N/A"}
                         </ThemedText.BodySmall>
                         <ThemedText.BodySmall>
-                          Date: {m.date || 'N/A'}
+                          Date: {m.date || "N/A"}
                         </ThemedText.BodySmall>
                         <ThemedText.BodySmall>
-                          Recipient: {m.recipient || 'N/A'}
+                          Recipient: {m.recipient || "N/A"}
                         </ThemedText.BodySmall>
                         <ThemedText.BodySmall>
                           Index: {m.originalIndex}
@@ -690,139 +749,158 @@ const Home: React.FC = () => {
                         icon="chevronRight"
                         disabled={
                           selectedMetadata?.originalIndex === m.originalIndex &&
-                          proofStatus === 'generating'
+                          proofStatus === "generating"
                         }
                       >
                         Prove
                       </AccessoryButton>
                     </MetadataItem>
-                  )
-                )}
-              </MetadataList>
-            ) : (
-              <EmptyStateContainer>
-                <EmptyStateMessage>
-                  Authenticate to see available metadata
-                </EmptyStateMessage>
-              </EmptyStateContainer>
-            )}
-          </Section>
-        </MiddlePanel>
+                  ))}
+                </MetadataList>
+              ) : (
+                <EmptyStateContainer>
+                  <EmptyStateMessage>
+                    Authenticate to see available metadata
+                  </EmptyStateMessage>
+                </EmptyStateContainer>
+              )}
+            </Section>
+          </MiddlePanel>
 
-        <ProofPanel>
-          <Section>
-            <StepIndicator>
-              <StepNumber>3</StepNumber>
-              <StepLabel>Generate zkTLS Proof</StepLabel>
-            </StepIndicator>
-            <StatusItem>
-              <StatusLabel>Proof Status</StatusLabel>
-              <AccessoryButton
-                onClick={handleTogglePasteMode}
-                height={32}
-              >
-                {isPasteMode ? 'Generate Mode' : 'Paste Proof'}
-              </AccessoryButton>
-            </StatusItem>
-            {isPasteMode ? (
-              <ProofContainer>
-                <ThemedText.BodySecondary>
-                  Paste your proof JSON below:
-                </ThemedText.BodySecondary>
-                <ProofTextArea
-                  value={resultProof}
-                  onChange={(e) => handlePastedProofChange(e.target.value)}
-                  aria-label="Proof JSON"
-                  placeholder='Paste your proof JSON here…&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { … },&#10;    "signatures": { … }&#10;  }&#10;}'
-                />
-                {proofStatus === 'success' && (
-                  <ThemedText.BodySecondary style={{ color: colors.validGreen }}>
-                    Valid proof detected
+          <ProofPanel>
+            <Section>
+              <StepIndicator>
+                <StepNumber>3</StepNumber>
+                <StepLabel>Generate zkTLS Proof</StepLabel>
+              </StepIndicator>
+              <StatusItem>
+                <StatusLabel>Proof Status</StatusLabel>
+                <AccessoryButton onClick={handleTogglePasteMode} height={32}>
+                  {isPasteMode ? "Generate Mode" : "Paste Proof"}
+                </AccessoryButton>
+              </StatusItem>
+              {isPasteMode ? (
+                <ProofContainer>
+                  <ThemedText.BodySecondary>
+                    Paste your proof JSON below:
                   </ThemedText.BodySecondary>
-                )}
-              </ProofContainer>
-            ) : proofStatus !== 'idle' ? (
-              <ProofContainer>
-                {proofStatus === 'generating' && (
-                  <SpinnerContainer>
-                    <Spinner color={colors.defaultBorderColor} size={40} />
-                    <SpinnerMessage>
-                      Generating zero-knowledge proof…
-                      <br />
-                      This may take up to 30 seconds
-                    </SpinnerMessage>
-                  </SpinnerContainer>
-                )}
-                {(proofStatus === 'success' || proofStatus === 'error') && (
-                  <>
-                    <ThemedText.BodySecondary>
-                      {proofStatus === 'success'
-                        ? `Proof generated! ${proofGenerationDuration ? `(${(proofGenerationDuration / 1000).toFixed(1)}s)` : ''}`
-                        : <>
-                          Error generating proof: {' '}
-                          <ErrorMessage>
-                            {paymentProof?.error.message}
-                          </ErrorMessage>
-                        </>
-                      }
+                  <ProofTextArea
+                    value={resultProof}
+                    onChange={(e) => handlePastedProofChange(e.target.value)}
+                    aria-label="Proof JSON"
+                    placeholder='Paste your proof JSON here…&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { … },&#10;    "signatures": { … }&#10;  }&#10;}'
+                  />
+                  {proofStatus === "success" && (
+                    <ThemedText.BodySecondary
+                      style={{ color: colors.validGreen }}
+                    >
+                      Valid proof detected
                     </ThemedText.BodySecondary>
-                    <ProofTextArea
-                      readOnly
-                      value={resultProof}
-                      aria-label="Generated proof JSON"
-                    />
-                  </>
-                )}
-                {proofStatus === 'timeout' && (
-                  <ThemedText.LabelSmall>
-                    Timeout: no proof received.
-                  </ThemedText.LabelSmall>
-                )}
-              </ProofContainer>
-            ) : (
-              <EmptyStateContainer>
-                <EmptyStateMessage>
-                  Select metadata and generate a proof to see results here
-                </EmptyStateMessage>
-              </EmptyStateContainer>
-            )}
-          </Section>
-        </ProofPanel>
+                  )}
+                </ProofContainer>
+              ) : proofStatus !== "idle" ? (
+                <ProofContainer>
+                  {proofStatus === "generating" && (
+                    <SpinnerContainer>
+                      <Spinner color={colors.defaultBorderColor} size={40} />
+                      <SpinnerMessage>
+                        Generating zero-knowledge proof…
+                        <br />
+                        This may take up to 30 seconds
+                      </SpinnerMessage>
+                    </SpinnerContainer>
+                  )}
+                  {(proofStatus === "success" || proofStatus === "error") && (
+                    <>
+                      <ThemedText.BodySecondary>
+                        {proofStatus === "success" ? (
+                          `Proof generated! ${
+                            proofGenerationDuration
+                              ? `(${(proofGenerationDuration / 1000).toFixed(
+                                  1
+                                )}s)`
+                              : ""
+                          }`
+                        ) : (
+                          <>
+                            Error generating proof:{" "}
+                            <ErrorMessage>
+                              {paymentProof?.error.message}
+                            </ErrorMessage>
+                          </>
+                        )}
+                      </ThemedText.BodySecondary>
+                      <ProofTextArea
+                        readOnly
+                        value={resultProof}
+                        aria-label="Generated proof JSON"
+                      />
+                    </>
+                  )}
+                  {proofStatus === "timeout" && (
+                    <ThemedText.LabelSmall>
+                      Timeout: no proof received.
+                    </ThemedText.LabelSmall>
+                  )}
+                </ProofContainer>
+              ) : (
+                <EmptyStateContainer>
+                  <EmptyStateMessage>
+                    Select metadata and generate a proof to see results here
+                  </EmptyStateMessage>
+                </EmptyStateContainer>
+              )}
+            </Section>
+          </ProofPanel>
 
-        <VerifyPanel>
-          <Section>
-            <StepIndicator>
-              <StepNumber>4</StepNumber>
-              <StepLabel>Verify zkTLS Proof & Generate FulfillIntent Params</StepLabel>
-            </StepIndicator>
+          <VerifyPanel>
+            <Section>
+              <StepIndicator>
+                <StepNumber>4</StepNumber>
+                <StepLabel>
+                  Verify zkTLS Proof & Generate FulfillIntent Params
+                </StepLabel>
+              </StepIndicator>
 
-            
-            <VerifyGrid>
+              <VerifyGrid>
                 <AttestationContainer>
                   <AttestationControls>
                     <StatusItem>
                       <StatusLabel>Attestation Service</StatusLabel>
                     </StatusItem>
                     <StyledInputContainer>
-                    <StyledInputLabel htmlFor="verifyIntentHash">
-                      Intent Hash (for Verify)
-                    </StyledInputLabel>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-                    <StyledSelect
-                      as="input"
-                      id="verifyIntentHash"
-                      name="verifyIntentHash"
-                      value={verifyIntentHash}
-                      onChange={(e: any) => {
-                        const v = e.target.value;
-                        if (v === '' || /^(0x)?[0-9a-fA-F]*$/.test(v)) setVerifyIntentHash(v);
-                      }}
-                      onBlur={() => { try { setVerifyIntentHash(normalizeHex32(verifyIntentHash)); } catch {} }}
-                      autoComplete="off"
-                      inputMode="text"
-                      spellCheck="false"
-                      style={{ flex: 1 }}
-                    />
+                      <StyledInputLabel htmlFor="verifyIntentHash">
+                        Intent Hash (for Verify)
+                      </StyledInputLabel>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "stretch",
+                        }}
+                      >
+                        <StyledSelect
+                          as="input"
+                          id="verifyIntentHash"
+                          name="verifyIntentHash"
+                          value={verifyIntentHash}
+                          onChange={(e: any) => {
+                            const v = e.target.value;
+                            if (v === "" || /^(0x)?[0-9a-fA-F]*$/.test(v))
+                              setVerifyIntentHash(v);
+                          }}
+                          onBlur={() => {
+                            try {
+                              setVerifyIntentHash(
+                                normalizeHex32(verifyIntentHash)
+                              );
+                            } catch {}
+                          }}
+                          autoComplete="off"
+                          inputMode="text"
+                          spellCheck="false"
+                          style={{ flex: 1 }}
+                        />
                         <AccessoryButton
                           onClick={handleFetchIntentFromChain}
                           loading={fetchIntentLoading}
@@ -833,151 +911,197 @@ const Home: React.FC = () => {
                         />
                       </div>
                       {fetchIntentError && (
-                        <ThemedText.LabelSmall style={{ color: colors.invalidRed, marginTop: 6 }}>
+                        <ThemedText.LabelSmall
+                          style={{ color: colors.invalidRed, marginTop: 6 }}
+                        >
                           {fetchIntentError}
                         </ThemedText.LabelSmall>
                       )}
                     </StyledInputContainer>
-                  <Input
-                    label="Attestation Service URL"
-                    name="attestationBaseUrl"
-                    value={attestationBaseUrl}
-                    onChange={(e) => setAttestationBaseUrl(e.target.value)}
-                    valueFontSize="14px"
-                    placeholder="https://attestation-service-staging.zkp2p.xyz…"
-                    type="url"
-                    inputMode="url"
-                    readOnly={attestationLoading}
-                  />
-                  <StyledInputContainer>
-                    <StyledInputLabel htmlFor="chainId">Chain</StyledInputLabel>
-            <StyledSelect
-              id="chainId"
-              name="chainId"
-              value={chainId}
-              onChange={(e) => setChainId(parseInt(e.target.value))}
-              disabled={attestationLoading}
-            >
-              <option value="84532">Base Sepolia (84532)</option>
-              <option value="8453">Base (8453)</option>
-            </StyledSelect>
-                  </StyledInputContainer>
-                  {/* Verifying Contract moved to Advanced */}
-                  <AdvancedSection>
-                    <AdvancedHeader
-                      type="button"
-                      onClick={() => setIsIntentAdvancedOpen(!isIntentAdvancedOpen)}
-                      aria-expanded={isIntentAdvancedOpen}
-                      aria-controls="intent-advanced-panel"
-                    >
-                      <ThemedText.BodySmall>Intent Details (Advanced)</ThemedText.BodySmall>
-                      <AdvancedChevron size={16} $expanded={isIntentAdvancedOpen} />
-                    </AdvancedHeader>
-                    {isIntentAdvancedOpen && (
-                      <AdvancedContent id="intent-advanced-panel">
-                        <CalldataInputsContainer>
-                          <CalldataInputsGrid>
-                            <Input
-                              label="Amount"
-                              name="intentAmount"
-                              value={calldataInputs.intentAmount}
-                              onChange={(e) => handleCalldataInputChange('intentAmount', e.target.value)}
-                              type="number"
-                              step="1"
-                              inputMode="numeric"
-                              valueFontSize="14px"
-                              placeholder="e.g. 1000000…"
-                            />
-                            <Input
-                              label="Timestamp (sec)"
-                              name="intentTimestamp"
-                              value={calldataInputs.intentTimestamp}
-                              onChange={(e) => handleCalldataInputChange('intentTimestamp', e.target.value)}
-                              type="number"
-                              step="1"
-                              inputMode="numeric"
-                              valueFontSize="14px"
-                              placeholder="e.g. 1712345678…"
-                            />
-                            <Input
-                              label="Payee Details (bytes32)"
-                              name="payeeDetails"
-                              value={calldataInputs.payeeDetails}
-                              onChange={(e) => handleCalldataInputChange('payeeDetails', e.target.value)}
-                              valueFontSize="14px"
-                              placeholder="0x…"
-                            />
-                            <Input
-                              label="Fiat Currency (bytes32)"
-                              name="fiatCurrency"
-                              value={calldataInputs.fiatCurrency}
-                              onChange={(e) => handleCalldataInputChange('fiatCurrency', e.target.value)}
-                              valueFontSize="14px"
-                              placeholder="0x…"
-                            />
-                            <Input
-                              label="Conversion Rate (1e18)"
-                              name="conversionRate"
-                              value={calldataInputs.conversionRate}
-                              onChange={(e) => handleCalldataInputChange('conversionRate', e.target.value)}
-                              type="number"
-                              step="any"
-                              inputMode="decimal"
-                              valueFontSize="14px"
-                              placeholder="e.g. 1.00…"
-                            />
-                            <Input
-                              label="Payment Method (bytes32)"
-                              name="paymentMethod"
-                              value={paymentMethodHex}
-                              onChange={(e) => setPaymentMethodHex(e.target.value)}
-                              valueFontSize="14px"
-                              placeholder="0x…"
-                            />
-                            <Input
-                              label="Verifying Contract"
-                              name="verifyingContract"
-                              value={verifyingContract}
-                              onChange={(e) => setVerifyingContract(e.target.value)}
-                              valueFontSize="12px"
-                              placeholder="e.g. 0x16b3…"
-                            />
-                            <Input
-                              label="Post Intent Hook Data (bytes)"
-                              name="postIntentHookData"
-                              value={postIntentHookData}
-                              onChange={(e) => setPostIntentHookData(e.target.value)}
-                              valueFontSize="12px"
-                              placeholder="0x…"
-                            />
-                          </CalldataInputsGrid>
-                        </CalldataInputsContainer>
-                      </AdvancedContent>
-                    )}
-                  </AdvancedSection>
+                    <Input
+                      label="Attestation Service URL"
+                      name="attestationBaseUrl"
+                      value={attestationBaseUrl}
+                      onChange={(e) => setAttestationBaseUrl(e.target.value)}
+                      valueFontSize="14px"
+                      placeholder="https://attestation-service-staging.zkp2p.xyz…"
+                      type="url"
+                      inputMode="url"
+                      readOnly={attestationLoading}
+                    />
+                    <StyledInputContainer>
+                      <StyledInputLabel htmlFor="chainId">
+                        Chain
+                      </StyledInputLabel>
+                      <StyledSelect
+                        id="chainId"
+                        name="chainId"
+                        value={chainId}
+                        onChange={(e) => setChainId(parseInt(e.target.value))}
+                        disabled={attestationLoading}
+                      >
+                        <option value="84532">Base Sepolia (84532)</option>
+                        <option value="8453">Base (8453)</option>
+                      </StyledSelect>
+                    </StyledInputContainer>
+                    {/* Verifying Contract moved to Advanced */}
+                    <AdvancedSection>
+                      <AdvancedHeader
+                        type="button"
+                        onClick={() =>
+                          setIsIntentAdvancedOpen(!isIntentAdvancedOpen)
+                        }
+                        aria-expanded={isIntentAdvancedOpen}
+                        aria-controls="intent-advanced-panel"
+                      >
+                        <ThemedText.BodySmall>
+                          Intent Details (Advanced)
+                        </ThemedText.BodySmall>
+                        <AdvancedChevron
+                          size={16}
+                          $expanded={isIntentAdvancedOpen}
+                        />
+                      </AdvancedHeader>
+                      {isIntentAdvancedOpen && (
+                        <AdvancedContent id="intent-advanced-panel">
+                          <CalldataInputsContainer>
+                            <CalldataInputsGrid>
+                              <Input
+                                label="Amount"
+                                name="intentAmount"
+                                value={calldataInputs.intentAmount}
+                                onChange={(e) =>
+                                  handleCalldataInputChange(
+                                    "intentAmount",
+                                    e.target.value
+                                  )
+                                }
+                                type="number"
+                                step="1"
+                                inputMode="numeric"
+                                valueFontSize="14px"
+                                placeholder="e.g. 1000000…"
+                              />
+                              <Input
+                                label="Timestamp (sec)"
+                                name="intentTimestamp"
+                                value={calldataInputs.intentTimestamp}
+                                onChange={(e) =>
+                                  handleCalldataInputChange(
+                                    "intentTimestamp",
+                                    e.target.value
+                                  )
+                                }
+                                type="number"
+                                step="1"
+                                inputMode="numeric"
+                                valueFontSize="14px"
+                                placeholder="e.g. 1712345678…"
+                              />
+                              <Input
+                                label="Payee Details (bytes32)"
+                                name="payeeDetails"
+                                value={calldataInputs.payeeDetails}
+                                onChange={(e) =>
+                                  handleCalldataInputChange(
+                                    "payeeDetails",
+                                    e.target.value
+                                  )
+                                }
+                                valueFontSize="14px"
+                                placeholder="0x…"
+                              />
+                              <Input
+                                label="Fiat Currency (bytes32)"
+                                name="fiatCurrency"
+                                value={calldataInputs.fiatCurrency}
+                                onChange={(e) =>
+                                  handleCalldataInputChange(
+                                    "fiatCurrency",
+                                    e.target.value
+                                  )
+                                }
+                                valueFontSize="14px"
+                                placeholder="0x…"
+                              />
+                              <Input
+                                label="Conversion Rate (1e18)"
+                                name="conversionRate"
+                                value={calldataInputs.conversionRate}
+                                onChange={(e) =>
+                                  handleCalldataInputChange(
+                                    "conversionRate",
+                                    e.target.value
+                                  )
+                                }
+                                type="number"
+                                step="any"
+                                inputMode="decimal"
+                                valueFontSize="14px"
+                                placeholder="e.g. 1.00…"
+                              />
+                              <Input
+                                label="Payment Method (bytes32)"
+                                name="paymentMethod"
+                                value={paymentMethodHex}
+                                onChange={(e) =>
+                                  setPaymentMethodHex(e.target.value)
+                                }
+                                valueFontSize="14px"
+                                placeholder="0x…"
+                              />
+                              <Input
+                                label="Verifying Contract"
+                                name="verifyingContract"
+                                value={verifyingContract}
+                                onChange={(e) =>
+                                  setVerifyingContract(e.target.value)
+                                }
+                                valueFontSize="12px"
+                                placeholder="e.g. 0x16b3…"
+                              />
+                              <Input
+                                label="Post Intent Hook Data (bytes)"
+                                name="postIntentHookData"
+                                value={postIntentHookData}
+                                onChange={(e) =>
+                                  setPostIntentHookData(e.target.value)
+                                }
+                                valueFontSize="12px"
+                                placeholder="0x…"
+                              />
+                            </CalldataInputsGrid>
+                          </CalldataInputsContainer>
+                        </AdvancedContent>
+                      )}
+                    </AdvancedSection>
 
-                  <ButtonContainer>
-                    <div style={{ display: 'flex', gap: 12 }}>
-                      <Button
-                        onClick={handleSendToAttestation}
-                        disabled={attestationLoading || !resultProof || proofStatus !== 'success'}
-                        loading={attestationLoading}
-                        height={48}
-                        width={216}
-                      >
-                        Verify Proof
-                      </Button>
-                      <Button
-                        onClick={handleGenerateCalldata}
-                        height={48}
-                        width={216}
-                        disabled={!attestationResponse}
-                      >
-                        Generate Params
-                      </Button>
-                    </div>
-                  </ButtonContainer>
-                </AttestationControls>
+                    <ButtonContainer>
+                      <div style={{ display: "flex", gap: 12 }}>
+                        <Button
+                          onClick={handleSendToAttestation}
+                          disabled={
+                            attestationLoading ||
+                            !resultProof ||
+                            proofStatus !== "success"
+                          }
+                          loading={attestationLoading}
+                          height={48}
+                          width={216}
+                        >
+                          Verify Proof
+                        </Button>
+                        <Button
+                          onClick={handleGenerateCalldata}
+                          height={48}
+                          width={216}
+                          disabled={!attestationResponse}
+                        >
+                          Generate Params
+                        </Button>
+                      </div>
+                    </ButtonContainer>
+                  </AttestationControls>
                 </AttestationContainer>
                 <VerifyRight>
                   {attestationResponse && (
@@ -1021,9 +1145,8 @@ const Home: React.FC = () => {
                   ) : null}
                 </VerifyRight>
               </VerifyGrid>
-            
-          </Section>
-        </VerifyPanel>
+            </Section>
+          </VerifyPanel>
         </AppContainer>
       </MainContent>
     </PageWrapper>
@@ -1043,14 +1166,14 @@ const PageWrapper = styled.div`
   overflow-x: hidden;
   overflow-y: visible;
   box-sizing: border-box;
-  
+
   /* Tablet view - allow vertical scrolling */
   @media (max-width: 1400px) and (min-width: 769px) {
     height: auto;
     min-height: 100vh;
     overflow: visible;
   }
-  
+
   @media (max-width: 768px) {
     height: auto;
     min-height: 100vh;
@@ -1067,7 +1190,7 @@ const MainContent = styled.div`
   max-width: 1440px;
   height: auto;
   box-sizing: border-box;
-  
+
   @media (max-width: 768px) {
     gap: 0;
   }
@@ -1085,7 +1208,7 @@ const AppContainer = styled.div`
   background: ${colors.backgroundSecondary};
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   box-sizing: border-box;
-  
+
   /* Tablet view (landscape) - 2x2 grid with scrollable container */
   @media (max-width: 1400px) and (min-width: 769px) {
     grid-template-columns: 1fr 1fr;
@@ -1096,25 +1219,25 @@ const AppContainer = styled.div`
     max-height: none;
     overflow: visible;
     padding: 0;
-    
+
     /* Custom scrollbar for the container */
     scrollbar-width: thin;
     scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-    
+
     &::-webkit-scrollbar {
       width: 8px;
     }
-    
+
     &::-webkit-scrollbar-track {
       background: transparent;
     }
-    
+
     &::-webkit-scrollbar-thumb {
       background-color: rgba(155, 155, 155, 0.5);
       border-radius: 20px;
     }
   }
-  
+
   /* Mobile view - stack vertically */
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
@@ -1135,7 +1258,7 @@ const LeftPanel = styled.div`
   height: auto;
   display: flex;
   flex-direction: column;
-  
+
   /* Tablet view (landscape) - 2x2 grid */
   @media (max-width: 1400px) and (min-width: 769px) {
     border-right: 1px solid ${colors.defaultBorderColor};
@@ -1144,7 +1267,7 @@ const LeftPanel = styled.div`
     min-height: 0; /* Allow proper sizing within grid */
     overflow: visible;
   }
-  
+
   /* Mobile view */
   @media (max-width: 768px) {
     border-right: none;
@@ -1160,7 +1283,7 @@ const MiddlePanel = styled.div`
   height: auto;
   display: flex;
   flex-direction: column;
-  
+
   /* Tablet view (landscape) - 2x2 grid */
   @media (max-width: 1400px) and (min-width: 769px) {
     border-right: none;
@@ -1169,7 +1292,7 @@ const MiddlePanel = styled.div`
     min-height: 0; /* Allow proper sizing within grid */
     overflow: visible;
   }
-  
+
   /* Mobile view */
   @media (max-width: 768px) {
     border-right: none;
@@ -1185,7 +1308,7 @@ const ProofPanel = styled.div`
   height: auto;
   display: flex;
   flex-direction: column;
-  
+
   /* Tablet view (landscape) - 2x2 grid */
   @media (max-width: 1400px) and (min-width: 769px) {
     border-right: 1px solid ${colors.defaultBorderColor};
@@ -1194,7 +1317,7 @@ const ProofPanel = styled.div`
     min-height: 0; /* Allow proper sizing within grid */
     overflow: visible;
   }
-  
+
   /* Mobile view */
   @media (max-width: 768px) {
     border-right: none;
@@ -1212,7 +1335,7 @@ const VerifyPanel = styled.div`
   display: flex;
   flex-direction: column;
   grid-column: 1 / -1; /* span all columns */
-  
+
   @media (max-width: 1400px) and (min-width: 769px) {
     border-right: none;
     border-bottom: none;
@@ -1220,7 +1343,7 @@ const VerifyPanel = styled.div`
     min-height: 0;
     overflow: visible;
   }
-  
+
   @media (max-width: 768px) {
     border-right: none;
     border-bottom: 1px solid ${colors.defaultBorderColor};
@@ -1239,24 +1362,24 @@ const Section = styled.div`
   min-width: 0;
   width: 100%;
   overflow: visible;
-  
+
   /* Custom scrollbar for internal content */
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.3) transparent;
-  
+
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.3);
     border-radius: 20px;
   }
-  
+
   /* Ensure content doesn't overflow in tablet view */
   @media (max-width: 1400px) and (min-width: 769px) {
     height: 100%;
@@ -1303,23 +1426,23 @@ const MetadataList = styled.div`
   overflow-y: auto;
   padding-right: 4px;
   -webkit-overflow-scrolling: touch;
-  
+
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
+
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
   }
-  
+
   @media (max-width: 768px) {
     max-height: 45vh;
   }
@@ -1332,13 +1455,11 @@ const MetadataItem = styled.div<{ selected: boolean }>`
   padding: 10px;
   border: 1px solid
     ${(p) =>
-      p.selected
-        ? colors.selectorHoverBorder
-        : colors.defaultBorderColor};
+      p.selected ? colors.selectorHoverBorder : colors.defaultBorderColor};
   border-radius: ${radii.md}px;
   background-color: ${(p) =>
     p.selected ? opacify(10, colors.white) : colors.backgroundSecondary};
-  
+
   &:hover {
     background-color: ${(p) =>
       p.selected ? opacify(14, colors.white) : opacify(6, colors.white)};
@@ -1383,23 +1504,23 @@ const ProofTextArea = styled.textarea`
   box-sizing: border-box;
   background: ${colors.inputDefaultColor};
   color: ${colors.white};
-  
+
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
+
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
   }
-  
+
   @media (max-width: 768px) {
     min-height: 250px;
   }
@@ -1429,7 +1550,7 @@ const SpinnerMessage = styled(ThemedText.LabelSmall)`
   opacity: 0.8;
 `;
 
-const IconButton = styled.button.attrs({ type: 'button' })`
+const IconButton = styled.button.attrs({ type: "button" })`
   background: none;
   border: none;
   color: ${colors.white};
@@ -1438,12 +1559,12 @@ const IconButton = styled.button.attrs({ type: 'button' })`
   display: flex;
   align-items: center;
   gap: 4px;
-  
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
-  
+
   &:hover:not(:disabled) {
     opacity: 0.8;
   }
@@ -1454,20 +1575,21 @@ const IconButton = styled.button.attrs({ type: 'button' })`
   }
 `;
 
-const StyledChevronRight = styled(ChevronRight).attrs({ 'aria-hidden': true })`
+const StyledChevronRight = styled(ChevronRight).attrs({ "aria-hidden": true })`
   width: 16px;
   height: 16px;
   color: ${colors.white};
 `;
 
-const AdvancedChevron = styled(ChevronRight).attrs({ 'aria-hidden': true })<{
+const AdvancedChevron = styled(ChevronRight).attrs({ "aria-hidden": true })<{
   $expanded?: boolean;
 }>`
   width: 16px;
   height: 16px;
   color: ${colors.white};
   transition: transform 0.2s ease;
-  transform: ${({ $expanded }) => ($expanded ? 'rotate(90deg)' : 'rotate(0deg)')};
+  transform: ${({ $expanded }) =>
+    $expanded ? "rotate(90deg)" : "rotate(0deg)"};
 `;
 
 const EmptyStateContainer = styled.div`
@@ -1477,7 +1599,7 @@ const EmptyStateContainer = styled.div`
   height: 100%;
   min-height: 300px;
   padding: 20px;
-  
+
   @media (max-width: 768px) {
     min-height: 200px;
   }
@@ -1505,7 +1627,7 @@ const AdvancedHeader = styled.button`
   border: none;
   width: 100%;
   text-align: left;
-  
+
   &:hover {
     background: ${opacify(12, colors.white)};
   }
@@ -1543,11 +1665,13 @@ const AttestationControls = styled.div`
   gap: 12px;
   width: 100%;
   align-items: stretch;
-  
+
   @media (max-width: 480px) {
     flex-direction: column;
-    
-    select, button, input {
+
+    select,
+    button,
+    input {
       width: 100%;
     }
   }
@@ -1569,9 +1693,7 @@ const StyledInputContainer = styled.div`
   background-color: ${colors.inputDefaultColor};
   width: 100%;
   box-sizing: border-box;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 
   &:focus-within {
     border-color: ${colors.white};
@@ -1637,23 +1759,23 @@ const AttestationResponseArea = styled.textarea`
   box-sizing: border-box;
   background: ${colors.inputDefaultColor};
   color: ${colors.white};
-  
+
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
+
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
   }
-  
+
   @media (max-width: 768px) {
     min-height: 250px;
   }
@@ -1670,8 +1792,6 @@ const AttestationErrorMessage = styled.div`
 
 // CalldataSection/CalldataContent removed after inlining into the App grid
 
-
-
 const CalldataInputsContainer = styled.div`
   display: flex;
   flex-direction: column;
@@ -1682,7 +1802,7 @@ const CalldataInputsGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  
+
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
   }
@@ -1729,23 +1849,23 @@ const CalldataTextArea = styled.textarea`
   box-sizing: border-box;
   background: ${colors.inputDefaultColor};
   color: ${colors.white};
-  
+
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
-  
+
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: rgba(155, 155, 155, 0.5);
     border-radius: 20px;
   }
-  
+
   @media (max-width: 768px) {
     min-height: 150px;
   }

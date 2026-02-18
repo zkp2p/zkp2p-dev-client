@@ -10,16 +10,18 @@
  * @param hexColor
  */
 export function opacify(amount: number, hexColor: string): string {
-  if (!hexColor.startsWith('#')) {
+  if (!hexColor.startsWith("#")) {
     return hexColor;
   }
 
   if (hexColor.length !== 7) {
-    throw new Error(`opacify: provided color ${hexColor} was not in hexadecimal format (e.g. #000000)`);
+    throw new Error(
+      `opacify: provided color ${hexColor} was not in hexadecimal format (e.g. #000000)`
+    );
   }
 
   if (amount < 0 || amount > 100) {
-    throw new Error('opacify: provided amount should be between 0 and 100');
+    throw new Error("opacify: provided amount should be between 0 and 100");
   }
 
   const opacityHex = Math.round((amount / 100) * 255).toString(16);
@@ -31,43 +33,45 @@ export function opacify(amount: number, hexColor: string): string {
 /**
  * Core brand colors (from zkp2p-clients @zkp2p/brand tokens)
  */
-export const brandColors = {
-  black: '#000000',
-  white: '#FFFFFF',
-  lightGrey: '#EEEEEE',
-  richBlack: '#181818',
-  obsidian: '#101010',
-  grey: '#9A9A9A',
-  igniteYellow: '#FFE500',
-  igniteRed: '#FF3A33',
-  success: '#4BB543',
-  warning: '#FFC107',
-  error: '#FF4040',
-  errorAlt: '#DF2E2D',
-  link: '#1F95E2',
+const brandColors = {
+  black: "#000000",
+  white: "#FFFFFF",
+  lightGrey: "#EEEEEE",
+  richBlack: "#181818",
+  obsidian: "#101010",
+  grey: "#9A9A9A",
+  igniteYellow: "#FFE500",
+  igniteRed: "#FF3A33",
+  success: "#4BB543",
+  warning: "#FFC107",
+  error: "#FF4040",
+  errorAlt: "#DF2E2D",
+  link: "#1F95E2",
 } as const;
 
-export const borders = {
-  dark: '#383838',
-  light: '#EEEEEE',
-  cardLight: '#C9C9C9',
-  subtle: '#D3D3D3',
+const borders = {
+  dark: "#383838",
+  light: "#EEEEEE",
+  cardLight: "#C9C9C9",
+  subtle: "#D3D3D3",
 } as const;
 
 export const gradients = {
-  ignite: 'linear-gradient(270deg, #FFE500 0%, #FF3A33 100%)',
-  igniteHover: 'linear-gradient(90deg, #FFE500 0%, #FF3A33 100%)',
-  igniteVertical: 'linear-gradient(180deg, #FFE500 0%, #FF3A33 100%)',
-  igniteText: 'linear-gradient(90deg, #FFE500, #FF3A33)',
-  igniteNearHorizontal: 'linear-gradient(-89.11deg, #FFE500 3.94%, #FF3A33 91.73%)',
-  igniteDiagonal: 'linear-gradient(8.27deg, #FFE500 8.73%, #FF3A33 89.42%)',
-  igniteSteepDiagonal: 'linear-gradient(42.6deg, #FFE500 19.59%, #FF3A33 69.63%)',
+  ignite: "linear-gradient(270deg, #FFE500 0%, #FF3A33 100%)",
+  igniteHover: "linear-gradient(90deg, #FFE500 0%, #FF3A33 100%)",
+  igniteVertical: "linear-gradient(180deg, #FFE500 0%, #FF3A33 100%)",
+  igniteText: "linear-gradient(90deg, #FFE500, #FF3A33)",
+  igniteNearHorizontal:
+    "linear-gradient(-89.11deg, #FFE500 3.94%, #FF3A33 91.73%)",
+  igniteDiagonal: "linear-gradient(8.27deg, #FFE500 8.73%, #FF3A33 89.42%)",
+  igniteSteepDiagonal:
+    "linear-gradient(42.6deg, #FFE500 19.59%, #FF3A33 69.63%)",
 } as const;
 
-export const gradientValues = {
-  stops: '#FFE500 0%, #FF3A33 100%',
-  start: '#FFE500',
-  end: '#FF3A33',
+const gradientValues = {
+  stops: "#FFE500 0%, #FF3A33 100%",
+  start: "#FFE500",
+  end: "#FF3A33",
 } as const;
 
 export const fontFamilies = {
@@ -112,13 +116,13 @@ export const lineHeights = {
 } as const;
 
 export const letterSpacing = {
-  headline: '0',
-  normal: '0',
-  wide: '0.1em',
-  tight: '-0.02em',
-  snug: '-0.01em',
-  subheading: '0.02em',
-  button: '0.1em',
+  headline: "0",
+  normal: "0",
+  wide: "0.1em",
+  tight: "-0.02em",
+  snug: "-0.01em",
+  subheading: "0.02em",
+  button: "0.1em",
 } as const;
 
 export const radii = {
@@ -128,15 +132,15 @@ export const radii = {
   md: 10,
   lg: 16,
   xl: 24,
-  '2xl': 32,
+  "2xl": 32,
   full: 9999,
 } as const;
 
-export const transitions = {
-  fast: '0.15s ease',
-  normal: '0.2s ease',
-  slow: '0.3s ease',
-  background: 'background 0.2s ease',
+const transitions = {
+  fast: "0.15s ease",
+  normal: "0.2s ease",
+  slow: "0.3s ease",
+  background: "background 0.2s ease",
 } as const;
 
 /*
@@ -155,7 +159,7 @@ export const peer = {
   borderLight: borders.light,
   textPrimary: brandColors.white,
   textSecondary: brandColors.grey,
-  textPlaceholder: '#6C757D',
+  textPlaceholder: "#6C757D",
   success: brandColors.success,
   warning: brandColors.warning,
   error: brandColors.error,
