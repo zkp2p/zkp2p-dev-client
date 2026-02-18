@@ -1,4 +1,4 @@
-import { PropsWithChildren, ReactNode, useEffect, useState } from "react";
+import { ReactNode } from "react";
 import styled from "styled-components/macro";
 
 import noop from "@helpers/noop";
@@ -77,64 +77,5 @@ export default function Tooltip({
       }
       {...rest}
     />
-  );
-}
-
-// TODO(WEB-2024)
-// Do not pass through PopoverProps. Prefer higher-level interface to control MouseoverTooltip.
-type MouseoverTooltipProps = Omit<PopoverProps, "content" | "show"> &
-  PropsWithChildren<{
-    text: ReactNode;
-    size?: TooltipSize;
-    disabled?: boolean;
-    timeout?: number;
-    placement?: PopoverProps["placement"];
-    onOpen?: () => void;
-  }>;
-
-function MouseoverTooltip({
-  text,
-  disabled,
-  children,
-  onOpen,
-  timeout,
-  ...rest
-}: MouseoverTooltipProps) {
-  const [show, setShow] = useState(false);
-  const open = () => {
-    setShow(true);
-    onOpen?.();
-  };
-  const close = () => setShow(false);
-
-  useEffect(() => {
-    if (show && timeout) {
-      const tooltipTimer = setTimeout(() => {
-        setShow(false);
-      }, timeout);
-
-      return () => {
-        clearTimeout(tooltipTimer);
-      };
-    }
-    return;
-  }, [timeout, show]);
-
-  return (
-    <Tooltip
-      {...rest}
-      open={open}
-      close={close}
-      disabled={disabled}
-      show={show}
-      text={disabled ? null : text}
-    >
-      <div
-        onMouseEnter={disabled ? noop : open}
-        onMouseLeave={disabled || timeout ? noop : close}
-      >
-        {children}
-      </div>
-    </Tooltip>
   );
 }

@@ -68,12 +68,6 @@ export const gradients = {
     "linear-gradient(42.6deg, #FFE500 19.59%, #FF3A33 69.63%)",
 } as const;
 
-const gradientValues = {
-  stops: "#FFE500 0%, #FF3A33 100%",
-  start: "#FFE500",
-  end: "#FF3A33",
-} as const;
-
 export const fontFamilies = {
   headline: "'PP Valve', sans-serif",
   body: "'Inter', sans-serif",
@@ -134,13 +128,6 @@ export const radii = {
   xl: 24,
   "2xl": 32,
   full: 9999,
-} as const;
-
-const transitions = {
-  fast: "0.15s ease",
-  normal: "0.2s ease",
-  slow: "0.3s ease",
-  background: "background 0.2s ease",
 } as const;
 
 /*
