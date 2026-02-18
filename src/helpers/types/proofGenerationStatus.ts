@@ -25,21 +25,3 @@ export const ProofGenerationStatus = {
 
 export type ProofGenerationStatusType =
   (typeof ProofGenerationStatus)[keyof typeof ProofGenerationStatus];
-
-const ValidatePaymentStatus = {
-  DEFAULT: "default",
-  PAYMENTS_EXPIRED: "payments-expired",
-  VALID: "valid",
-};
-
-type ValidatePaymentStatusType =
-  (typeof ValidatePaymentStatus)[keyof typeof ValidatePaymentStatus];
-
-const ReclaimProofError = {
-  FAILED_TO_GENERATE_QR: "failed-to-generate-qr",
-  FAILED_TO_PROVE: "failed-to-prove",
-  WRONG_PAYMENT_SELECTED: "wrong-payment-selected",
-};
-
-type ReclaimProofErrorType =
-  (typeof ReclaimProofError)[keyof typeof ReclaimProofError];
