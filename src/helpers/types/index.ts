@@ -1,11 +1,8 @@
 //
-// Escrow and Proof 
+// Escrow and Proof
 //
 
-export type { Proof, ClaimInfo, CompleteClaimData, SignedClaim } from './proxyProof';
-export { parseExtensionProof, parseAppClipProof, encodeProofAsBytes } from './proxyProof';
-export { ValidatePaymentStatus, ProofGenerationStatus } from './proofGenerationStatus';
-export type { ValidatePaymentStatusType, ProofGenerationStatusType } from './proofGenerationStatus';
+export type { ProofGenerationStatusType } from "./proofGenerationStatus";
 
 //
 // Extension
@@ -17,7 +14,8 @@ export type {
   ExtensionRequestMetadataMessage,
   ExtensionRequestMetadata,
   ExtensionNotaryProofRequest,
-} from './browserExtension'
-export { ExtensionPostMessage, ExtensionReceiveMessage } from './browserExtension'
-
-export { MODALS } from './modals';
+} from "./browserExtension";
+export {
+  ExtensionPostMessage,
+  ExtensionReceiveMessage,
+} from "./browserExtension";

@@ -20,23 +20,26 @@ export const ProofGenerationStatus = {
   SWAP_TRANSACTION_MINING: "swap-transaction-mining",
   SWAP_TRANSACTION_FAILED: "swap-transaction-failed",
   // final
-  DONE: "done"
+  DONE: "done",
 };
 
-export type ProofGenerationStatusType = typeof ProofGenerationStatus[keyof typeof ProofGenerationStatus];
+export type ProofGenerationStatusType =
+  (typeof ProofGenerationStatus)[keyof typeof ProofGenerationStatus];
 
-export const ValidatePaymentStatus = {
+const ValidatePaymentStatus = {
   DEFAULT: "default",
   PAYMENTS_EXPIRED: "payments-expired",
-  VALID: "valid"
+  VALID: "valid",
 };
 
-export type ValidatePaymentStatusType = typeof ValidatePaymentStatus[keyof typeof ValidatePaymentStatus];
+type ValidatePaymentStatusType =
+  (typeof ValidatePaymentStatus)[keyof typeof ValidatePaymentStatus];
 
-export const ReclaimProofError = {
+const ReclaimProofError = {
   FAILED_TO_GENERATE_QR: "failed-to-generate-qr",
   FAILED_TO_PROVE: "failed-to-prove",
   WRONG_PAYMENT_SELECTED: "wrong-payment-selected",
 };
 
-export type ReclaimProofErrorType = typeof ReclaimProofError[keyof typeof ReclaimProofError];
+type ReclaimProofErrorType =
+  (typeof ReclaimProofError)[keyof typeof ReclaimProofError];
