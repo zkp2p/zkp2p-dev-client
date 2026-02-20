@@ -56,7 +56,7 @@ const derivePlatformFromActionType = (action: string, fallback: string) => {
 
 type GenericRecord = Record<string, unknown>;
 
-type NormalizedReclaimProof = {
+type NormalizedProofObject = {
   claim: GenericRecord;
   signatures: unknown;
 };
@@ -64,9 +64,9 @@ type NormalizedReclaimProof = {
 const isRecord = (value: unknown): value is GenericRecord =>
   typeof value === "object" && value !== null;
 
-const normalizeSingleReclaimProof = (
+const normalizeSingleProofObject = (
   value: unknown
-): NormalizedReclaimProof | null => {
+): NormalizedProofObject | null => {
   if (!isRecord(value)) return null;
 
   if (isRecord(value.claim)) {
@@ -86,17 +86,17 @@ const normalizeSingleReclaimProof = (
   return null;
 };
 
-const normalizeReclaimProofPayload = (
+const normalizeProofPayload = (
   value: unknown
-): NormalizedReclaimProof | NormalizedReclaimProof[] => {
+): NormalizedProofObject | NormalizedProofObject[] => {
   const normalizeArray = (items: unknown[]) => {
     const normalized = items
-      .map((item) => normalizeSingleReclaimProof(item))
-      .filter((item): item is NormalizedReclaimProof => item !== null);
+      .map((item) => normalizeSingleProofObject(item))
+      .filter((item): item is NormalizedProofObject => item !== null);
 
     if (!normalized.length || normalized.length !== items.length) {
       throw new Error(
-        "Invalid proof JSON. Expected a reclaim proof object or an array of reclaim proof objects."
+        "Invalid proof JSON. Expected a proof object or an array of proof objects."
       );
     }
 
@@ -107,7 +107,7 @@ const normalizeReclaimProofPayload = (
     return normalizeArray(value);
   }
 
-  const single = normalizeSingleReclaimProof(value);
+  const single = normalizeSingleProofObject(value);
   if (single) return single;
 
   if (isRecord(value) && Array.isArray(value.proof)) {
@@ -119,7 +119,7 @@ const normalizeReclaimProofPayload = (
   }
 
   throw new Error(
-    "Invalid proof JSON. Expected a reclaim proof object or an array of reclaim proof objects."
+    "Invalid proof JSON. Expected a proof object or an array of proof objects."
   );
 };
 
@@ -429,7 +429,7 @@ const Home: React.FC = () => {
 
     try {
       const proofData = JSON.parse(resultProof);
-      const normalizedProofPayload = normalizeReclaimProofPayload(proofData);
+      const normalizedProofPayload = normalizeProofPayload(proofData);
 
       // Normalize to bytes32 using Step 4 hash
       const intentHashHex = normalizeHex32(verifyIntentHash);
@@ -608,7 +608,7 @@ const Home: React.FC = () => {
     if (value.trim()) {
       try {
         const parsed = JSON.parse(value);
-        normalizeReclaimProofPayload(parsed);
+        normalizeProofPayload(parsed);
         setProofStatus("success");
       } catch {
         // Not valid JSON yet, keep current status
