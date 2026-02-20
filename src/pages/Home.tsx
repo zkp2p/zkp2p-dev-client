@@ -54,6 +54,75 @@ const derivePlatformFromActionType = (action: string, fallback: string) => {
   return parts.length > 1 ? parts[parts.length - 1] : fallback;
 };
 
+type GenericRecord = Record<string, unknown>;
+
+type NormalizedProofObject = {
+  claim: GenericRecord;
+  signatures: unknown;
+};
+
+const isRecord = (value: unknown): value is GenericRecord =>
+  typeof value === "object" && value !== null;
+
+const normalizeSingleProofObject = (
+  value: unknown
+): NormalizedProofObject | null => {
+  if (!isRecord(value)) return null;
+
+  if (isRecord(value.claim)) {
+    return {
+      claim: value.claim,
+      signatures: value.signatures ?? {},
+    };
+  }
+
+  if (isRecord(value.proof) && isRecord(value.proof.claim)) {
+    return {
+      claim: value.proof.claim,
+      signatures: value.proof.signatures ?? {},
+    };
+  }
+
+  return null;
+};
+
+const normalizeProofPayload = (
+  value: unknown
+): NormalizedProofObject | NormalizedProofObject[] => {
+  const normalizeArray = (items: unknown[]) => {
+    const normalized = items
+      .map((item) => normalizeSingleProofObject(item))
+      .filter((item): item is NormalizedProofObject => item !== null);
+
+    if (!normalized.length || normalized.length !== items.length) {
+      throw new Error(
+        "Invalid proof JSON. Expected a proof object or an array of proof objects."
+      );
+    }
+
+    return normalized;
+  };
+
+  if (Array.isArray(value)) {
+    return normalizeArray(value);
+  }
+
+  const single = normalizeSingleProofObject(value);
+  if (single) return single;
+
+  if (isRecord(value) && Array.isArray(value.proof)) {
+    return normalizeArray(value.proof);
+  }
+
+  if (isRecord(value) && Array.isArray(value.proofs)) {
+    return normalizeArray(value.proofs);
+  }
+
+  throw new Error(
+    "Invalid proof JSON. Expected a proof object or an array of proof objects."
+  );
+};
+
 // Step indicator component
 const StepIndicator = styled.div`
   display: flex;
@@ -360,11 +429,7 @@ const Home: React.FC = () => {
 
     try {
       const proofData = JSON.parse(resultProof);
-      const proofClaim = proofData.proof?.claim || proofData.claim;
-
-      if (!proofClaim) {
-        throw new Error("No proof claim found in the generated proof");
-      }
+      const normalizedProofPayload = normalizeProofPayload(proofData);
 
       // Normalize to bytes32 using Step 4 hash
       const intentHashHex = normalizeHex32(verifyIntentHash);
@@ -380,10 +445,7 @@ const Home: React.FC = () => {
 
       const payload = {
         proofType: "reclaim",
-        proof: JSON.stringify({
-          claim: proofClaim,
-          signatures: proofData.proof?.signatures || proofData.signatures || {},
-        }),
+        proof: JSON.stringify(normalizedProofPayload),
         chainId: chainId,
         verifyingContract: verifyingContract,
         intent: {
@@ -546,10 +608,8 @@ const Home: React.FC = () => {
     if (value.trim()) {
       try {
         const parsed = JSON.parse(value);
-        // Check if it has the expected proof structure
-        if (parsed.proof?.claim || parsed.claim) {
-          setProofStatus("success");
-        }
+        normalizeProofPayload(parsed);
+        setProofStatus("success");
       } catch {
         // Not valid JSON yet, keep current status
       }
@@ -788,7 +848,7 @@ const Home: React.FC = () => {
                     value={resultProof}
                     onChange={(e) => handlePastedProofChange(e.target.value)}
                     aria-label="Proof JSON"
-                    placeholder='Paste your proof JSON here…&#10;&#10;Expected format:&#10;{&#10;  "proof": {&#10;    "claim": { … },&#10;    "signatures": { … }&#10;  }&#10;}'
+                    placeholder='Paste your proof JSON here…&#10;&#10;Expected formats:&#10;1) { "proof": { "claim": { … }, "signatures": { … } } }&#10;2) [{ "claim": { … }, "signatures": { … } }, { … }]'
                   />
                   {proofStatus === "success" && (
                     <ThemedText.BodySecondary
