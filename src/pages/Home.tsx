@@ -431,15 +431,6 @@ const Home: React.FC = () => {
       const proofData = JSON.parse(resultProof);
       const normalizedProofPayload = normalizeReclaimProofPayload(proofData);
 
-      if (
-        paymentPlatform === "chase" &&
-        metadataPlatform === "zelle" &&
-        (!Array.isArray(normalizedProofPayload) ||
-          normalizedProofPayload.length !== 2)
-      ) {
-        throw new Error("Chase Zelle requires exactly 2 proofs");
-      }
-
       // Normalize to bytes32 using Step 4 hash
       const intentHashHex = normalizeHex32(verifyIntentHash);
       const amount = calldataInputs.intentAmount;
