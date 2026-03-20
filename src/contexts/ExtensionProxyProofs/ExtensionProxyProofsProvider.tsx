@@ -15,6 +15,14 @@ interface ProvidersProps {
   children: ReactNode;
 };
 
+type PendingProofRequest = {
+  reject: (error: Error) => void;
+  resolve: (proofId: string) => void;
+  timeoutId: NodeJS.Timeout;
+};
+
+const PROOF_ID_RESPONSE_TIMEOUT_MS = 30000;
+
 const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
   /*
    * Contexts
@@ -28,7 +36,6 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
 
   const [isSidebarInstalled, setIsSidebarInstalled] = useState<boolean>(false);
   const [sideBarVersion, setSideBarVersion] = useState<string | null>(null);
-  const [proofId, setProofId] = useState<string | null>(null);
   const [paymentProof, setPaymentProof] = useState<ExtensionNotaryProofRequest | null>(null);
 
   const [platformMetadata, setPlatformMetadata] = useState<Record<string, MetadataInfo>>({} as Record<string, MetadataInfo>);
@@ -37,6 +44,7 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
   const initialCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const frequentChecksIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const switchToNormalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingProofRequestRef = useRef<PendingProofRequest | null>(null);
 
   //
   // EXTENSION POST MESSAGES
@@ -88,9 +96,31 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
   const resetProofState = useCallback(() => {
     console.log('resetting proof state');
 
-    setProofId(null);
     setPaymentProof(null);
   }, []);
+
+  const clearPendingProofRequest = useCallback(() => {
+    const pendingProofRequest = pendingProofRequestRef.current;
+
+    if (!pendingProofRequest) {
+      return null;
+    }
+
+    clearTimeout(pendingProofRequest.timeoutId);
+    pendingProofRequestRef.current = null;
+
+    return pendingProofRequest;
+  }, []);
+
+  const rejectPendingProofRequest = useCallback((message: string) => {
+    const pendingProofRequest = clearPendingProofRequest();
+
+    if (!pendingProofRequest) {
+      return;
+    }
+
+    pendingProofRequest.reject(new Error(message));
+  }, [clearPendingProofRequest]);
 
   const generatePaymentProof = useCallback((
     platform: string,
@@ -98,30 +128,49 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     originalIndex: number,
     proofIndex?: number,
   ) => {
+    if (pendingProofRequestRef.current) {
+      return Promise.reject(new Error('A proof request is already in progress.'));
+    }
+
     resetProofState();
 
-    window.postMessage({
-      type: ExtensionPostMessage.GENERATE_PROOF,
-      intentHash,
-      originalIndex,
-      platform,
-      proofIndex,
-    }, '*');
+    return new Promise<string>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        pendingProofRequestRef.current = null;
+        reject(new Error('Timed out waiting for the extension to return a proof id.'));
+      }, PROOF_ID_RESPONSE_TIMEOUT_MS);
 
-    console.log('Posted Message: ', intentHash, originalIndex, platform, proofIndex);
+      pendingProofRequestRef.current = {
+        resolve,
+        reject,
+        timeoutId,
+      };
+
+      try {
+        window.postMessage({
+          type: ExtensionPostMessage.GENERATE_PROOF,
+          intentHash,
+          originalIndex,
+          platform,
+          proofIndex,
+        }, '*');
+
+        console.log('Posted Message: ', intentHash, originalIndex, platform, proofIndex);
+      } catch (error) {
+        clearTimeout(timeoutId);
+        pendingProofRequestRef.current = null;
+        reject(error instanceof Error ? error : new Error('Failed to post generate_proof message.'));
+      }
+    });
   }, [resetProofState]);
 
   /*
    * Fetch Transfer Proof
    */
 
-  const fetchPaymentProof = useCallback(() => {
-    if (proofId) {
-      window.postMessage({ type: ExtensionPostMessage.FETCH_PROOF_BY_ID, proofId }, '*');
-    } else {
-      console.log('No proof id');
-    }
-  }, [proofId]);
+  const fetchPaymentProof = useCallback((nextProofId: string) => {
+    window.postMessage({ type: ExtensionPostMessage.FETCH_PROOF_BY_ID, proofId: nextProofId }, '*');
+  }, []);
 
   /*
    * Handlers
@@ -157,12 +206,19 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     console.log('Client received FETCH_PROOF_REQUEST_ID_RESPONSE message');
 
     if (!event.data.proofId) {
-      setProofId(null);
+      rejectPendingProofRequest('Extension returned no proof id.');
       return;
     }
 
-    setProofId(event.data.proofId);
-  }, []);
+    const pendingProofRequest = clearPendingProofRequest();
+
+    if (!pendingProofRequest) {
+      console.warn('Received proof id without an active proof request.');
+      return;
+    }
+
+    pendingProofRequest.resolve(event.data.proofId);
+  }, [clearPendingProofRequest, rejectPendingProofRequest]);
 
   const handleExtensionProofByIdMessageReceived = useCallback(function(event: ExtensionEventMessage) {
     console.log('Client received FETCH_PROOF_BY_ID_RESPONSE message');
@@ -234,8 +290,14 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     return () => {
       window.removeEventListener("message", handleExtensionMessage);
       clearVersionPollingTimers();
+      rejectPendingProofRequest('Extension proof request was interrupted before the proof id was received.');
     };
-  }, [clearVersionPollingTimers, handleExtensionMessage, refetchExtensionVersion]);
+  }, [
+    clearVersionPollingTimers,
+    handleExtensionMessage,
+    refetchExtensionVersion,
+    rejectPendingProofRequest,
+  ]);
 
   return (
     <ExtensionProxyProofsContext.Provider

@@ -17,8 +17,13 @@ interface ExtensionProxyProofsValues {
   platformMetadata: Record<string, MetadataInfo>;
 
   paymentProof: ExtensionNotaryProofRequest | null;
-  generatePaymentProof: (platform: string, intentHash: string, originalIndex: number, proofIndex?: number) => void;
-  fetchPaymentProof: (platform: string) => void;
+  generatePaymentProof: (
+    platform: string,
+    intentHash: string,
+    originalIndex: number,
+    proofIndex?: number,
+  ) => Promise<string>;
+  fetchPaymentProof: (proofId: string) => void;
   resetProofState: () => void;
 };
 
@@ -32,8 +37,13 @@ const defaultValues: ExtensionProxyProofsValues = {
   platformMetadata: {} as Record<string, MetadataInfo>,
 
   paymentProof: null,
-  generatePaymentProof: (_platform: string, _intentHash: string, _originalIndex: number, _proofIndex?: number) => { },
-  fetchPaymentProof: (_platform: string) => { },
+  generatePaymentProof: async (
+    _platform: string,
+    _intentHash: string,
+    _originalIndex: number,
+    _proofIndex?: number,
+  ) => '',
+  fetchPaymentProof: (_proofId: string) => { },
   resetProofState: () => { },
 };
 

@@ -217,6 +217,7 @@ const Home: React.FC = () => {
 
   const [triggerProofFetchPolling, setTriggerProofFetchPolling] =
     useState(false);
+  const [activeProofId, setActiveProofId] = useState<string | null>(null);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -245,7 +246,6 @@ const Home: React.FC = () => {
     paymentProof,
     generatePaymentProof,
     fetchPaymentProof,
-    resetProofState,
   } = useExtensionProxyProofs();
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
@@ -303,6 +303,7 @@ const Home: React.FC = () => {
       setProofStatus("success");
       setResultProof(JSON.stringify(paymentProof, null, 2));
       setTriggerProofFetchPolling(false);
+      setActiveProofId(null);
       if (proofGenerationStartTime) {
         setProofGenerationDuration(Date.now() - proofGenerationStartTime);
       }
@@ -310,6 +311,7 @@ const Home: React.FC = () => {
       setProofStatus("error");
       setResultProof(JSON.stringify(paymentProof, null, 2));
       setTriggerProofFetchPolling(false);
+      setActiveProofId(null);
     } else {
       // keep status "generating"
       setProofStatus("generating");
@@ -318,16 +320,19 @@ const Home: React.FC = () => {
 
   useEffect(
     () => {
-      if (triggerProofFetchPolling && paymentPlatform) {
+      if (triggerProofFetchPolling && activeProofId) {
         if (intervalId) clearInterval(intervalId);
+        fetchPaymentProof(activeProofId);
         const id = setInterval(() => {
-          fetchPaymentProof(paymentPlatform);
+          fetchPaymentProof(activeProofId);
         }, PROOF_FETCH_INTERVAL);
         setIntervalId(id);
 
         proofTimeoutRef.current = setTimeout(() => {
           clearInterval(id);
+          setIntervalId(null);
           setTriggerProofFetchPolling(false);
+          setActiveProofId(null);
           setProofStatus("timeout");
         }, PROOF_GENERATION_TIMEOUT);
 
@@ -338,7 +343,7 @@ const Home: React.FC = () => {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [triggerProofFetchPolling, paymentPlatform, fetchPaymentProof]
+    [triggerProofFetchPolling, activeProofId, fetchPaymentProof]
   );
 
   useEffect(() => {
@@ -346,6 +351,7 @@ const Home: React.FC = () => {
       clearInterval(intervalId);
       setIntervalId(null);
       setTriggerProofFetchPolling(false);
+      setActiveProofId(null);
       if (proofTimeoutRef.current) {
         clearTimeout(proofTimeoutRef.current);
         proofTimeoutRef.current = null;
@@ -386,9 +392,10 @@ const Home: React.FC = () => {
     setSelectedMetadata(null);
     setProofStatus("idle");
     setResultProof("");
+    setActiveProofId(null);
   };
 
-  const handleGenerateProof = (meta: ExtensionRequestMetadata) => {
+  const handleGenerateProof = async (meta: ExtensionRequestMetadata) => {
     setSelectedMetadata(meta);
     setProofStatus("generating");
     setResultProof("");
@@ -398,6 +405,7 @@ const Home: React.FC = () => {
     setAttestationError(null);
 
     setTriggerProofFetchPolling(false);
+    setActiveProofId(null);
     if (intervalId) {
       clearInterval(intervalId);
       setIntervalId(null);
@@ -407,17 +415,37 @@ const Home: React.FC = () => {
       proofTimeoutRef.current = null;
     }
 
-    resetProofState();
     // Extension expects decimal intent hash; convert from hex
     const intentForProof = hexToDecimal(intentHash);
-    generatePaymentProof(
-      metadataPlatform,
-      intentForProof,
-      meta.originalIndex,
-      proofIndex
-    );
+    try {
+      const nextProofId = await generatePaymentProof(
+        metadataPlatform,
+        intentForProof,
+        meta.originalIndex,
+        proofIndex
+      );
 
-    setTriggerProofFetchPolling(true);
+      setActiveProofId(nextProofId);
+      setTriggerProofFetchPolling(true);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to start proof generation.";
+
+      setProofStatus("error");
+      setResultProof(
+        JSON.stringify(
+          {
+            error: {
+              message,
+            },
+          },
+          null,
+          2
+        )
+      );
+      setTriggerProofFetchPolling(false);
+      setActiveProofId(null);
+    }
   };
 
   const handleSendToAttestation = async () => {
