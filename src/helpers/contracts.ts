@@ -20,6 +20,8 @@ const RPC_URL: Record<ChainId, string> = {
   8453: "https://mainnet.base.org",
 };
 
+export const ZERO_BYTES32 = "0x" + "0".repeat(64);
+
 export function getDefaultVerifier(chainId: ChainId): string {
   return chainId === 8453
     ? baseNet.addresses.contracts.UnifiedPaymentVerifierV2
@@ -42,7 +44,10 @@ export async function fetchIntentDetails(
   chainId: ChainId,
   intentHashHex: string
 ): Promise<IntentDetails> {
-  const provider = new ethers.providers.JsonRpcProvider(RPC_URL[chainId], chainId);
+  const provider = new ethers.providers.JsonRpcProvider(
+    RPC_URL[chainId],
+    chainId
+  );
   const orchestrator = new ethers.Contract(
     getOrchestratorAddress(chainId),
     getOrchestratorAbi(chainId),
@@ -69,7 +74,7 @@ export function normalizeHex32(value: string): string {
   const v = (value || "").trim();
   const prefixed = v.startsWith("0x") ? v : `0x${v}`;
   if (prefixed === "0x" || prefixed === "0x0") {
-    return "0x" + "0".repeat(64);
+    return ZERO_BYTES32;
   }
   const hex = prefixed.length % 2 === 0 ? prefixed : "0x0" + prefixed.slice(2);
   if (!ethers.utils.isHexString(hex)) {

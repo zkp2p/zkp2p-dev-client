@@ -30,10 +30,12 @@ import {
   fetchIntentDetails,
   normalizeHex32,
   hexToDecimal,
+  ZERO_BYTES32,
 } from "@helpers/contracts";
 
 const CHROME_EXTENSION_URL =
   "https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih";
+const INSTALL_BUTTON_RESET_MS = 1500;
 const PROOF_FETCH_INTERVAL = 3000;
 const PROOF_GENERATION_TIMEOUT = 60000;
 
@@ -41,8 +43,7 @@ const PROOF_GENERATION_TIMEOUT = 60000;
 const DEFAULT_CALLDATA_INPUTS = {
   intentAmount: "0",
   intentTimestamp: "0",
-  payeeDetails:
-    "0x0000000000000000000000000000000000000000000000000000000000000000",
+  payeeDetails: ZERO_BYTES32,
   fiatCurrency: keccak256("USD"),
   conversionRate: "0",
 };
@@ -121,6 +122,22 @@ const normalizeProofPayload = (
   throw new Error(
     "Invalid proof JSON. Expected a proof object or an array of proof objects."
   );
+};
+
+const getIntentFetchErrorMessage = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return "Failed to fetch intent from chain";
+  }
+
+  if (
+    error.message === "Intent not found" ||
+    error.message.includes("CALL_EXCEPTION") ||
+    error.message.includes("missing revert data")
+  ) {
+    return "Intent not found for that hash on the selected chain.";
+  }
+
+  return error.message;
 };
 
 // Step indicator component
@@ -218,6 +235,7 @@ const Home: React.FC = () => {
   const [triggerProofFetchPolling, setTriggerProofFetchPolling] =
     useState(false);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
+  const installResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
@@ -353,9 +371,24 @@ const Home: React.FC = () => {
     }
   }, [proofStatus, intervalId]);
 
+  useEffect(() => {
+    return () => {
+      if (installResetTimeoutRef.current) {
+        clearTimeout(installResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleInstall = () => {
     window.open(CHROME_EXTENSION_URL, "_blank");
     setIsInstallClicked(true);
+    if (installResetTimeoutRef.current) {
+      clearTimeout(installResetTimeoutRef.current);
+    }
+    installResetTimeoutRef.current = setTimeout(() => {
+      setIsInstallClicked(false);
+      installResetTimeoutRef.current = null;
+    }, INSTALL_BUTTON_RESET_MS);
   };
 
   const handlePaymentPlatformChange = (
@@ -374,6 +407,7 @@ const Home: React.FC = () => {
   };
 
   const handleOpenSettings = () => {
+    if (!isSidebarInstalled) return;
     openSidebar("/settings");
   };
 
@@ -604,16 +638,21 @@ const Home: React.FC = () => {
   // Handle pasted proof changes
   const handlePastedProofChange = (value: string) => {
     setResultProof(value);
-    // Try to validate if it's a valid proof JSON
-    if (value.trim()) {
-      try {
-        const parsed = JSON.parse(value);
-        normalizeProofPayload(parsed);
-        setProofStatus("success");
-      } catch {
-        // Not valid JSON yet, keep current status
-      }
-    } else {
+    setAttestationResponse(null);
+    setAttestationError(null);
+    setGeneratedCalldata("");
+    setCalldataError(null);
+
+    if (!value.trim()) {
+      setProofStatus("idle");
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      normalizeProofPayload(parsed);
+      setProofStatus("success");
+    } catch {
       setProofStatus("idle");
     }
   };
@@ -627,6 +666,8 @@ const Home: React.FC = () => {
       setProofStatus("idle");
       setAttestationResponse(null);
       setAttestationError(null);
+      setGeneratedCalldata("");
+      setCalldataError(null);
     }
   };
 
@@ -642,6 +683,11 @@ const Home: React.FC = () => {
       setFetchIntentLoading(true);
       const netChain: 84532 | 8453 = chainId === 8453 ? 8453 : 84532;
       const hex = normalizeHex32(verifyIntentHash);
+      if (hex === ZERO_BYTES32) {
+        throw new Error(
+          "Enter a non-zero intent hash before fetching intent details."
+        );
+      }
       const onchain = await fetchIntentDetails(netChain, hex);
       setCalldataInputs({
         intentAmount: onchain.amount,
@@ -651,8 +697,8 @@ const Home: React.FC = () => {
         payeeDetails: onchain.payeeDetails || calldataInputs.payeeDetails,
       });
       setPaymentMethodHex(onchain.paymentMethod);
-    } catch (e: any) {
-      setFetchIntentError(e?.message || "Failed to fetch intent from chain");
+    } catch (error) {
+      setFetchIntentError(getIntentFetchErrorMessage(error));
     } finally {
       setFetchIntentLoading(false);
     }
@@ -675,8 +721,12 @@ const Home: React.FC = () => {
                 </StatusValue>
                 <IconButton
                   onClick={handleOpenSettings}
-                  disabled={proofStatus === "generating"}
-                  title="Open Settings"
+                  disabled={proofStatus === "generating" || !isSidebarInstalled}
+                  title={
+                    isSidebarInstalled
+                      ? "Open Settings"
+                      : "Install the extension to open settings"
+                  }
                 >
                   Open Settings
                   <StyledChevronRight />
@@ -762,6 +812,7 @@ const Home: React.FC = () => {
                     leftAccessorySvg={browserSvgIcon()}
                     loading={isInstallClicked}
                     disabled={isInstallClicked}
+                    loadingText="Opening store..."
                     height={48}
                     width={216}
                   >
