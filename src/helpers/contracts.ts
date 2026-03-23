@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
 import * as baseNet from "@zkp2p/contracts-v2/networks/base";
-import * as baseSepoliaNet from "@zkp2p/contracts-v2/networks/baseSepolia";
-import baseOrchestratorJson from "@zkp2p/contracts-v2/abis/base/Orchestrator.json";
-import baseSepoliaOrchestratorJson from "@zkp2p/contracts-v2/abis/baseSepolia/Orchestrator.json";
+import * as baseStagingNet from "@zkp2p/contracts-v2/networks/baseStaging";
+import baseOrchestratorV2Json from "@zkp2p/contracts-v2/abis/base/OrchestratorV2.json";
+import baseStagingOrchestratorV2Json from "@zkp2p/contracts-v2/abis/baseStaging/OrchestratorV2.json";
 
 type ChainId = 84532 | 8453;
 
@@ -22,35 +22,38 @@ const RPC_URL: Record<ChainId, string> = {
 
 export function getDefaultVerifier(chainId: ChainId): string {
   return chainId === 8453
-    ? baseNet.addresses.contracts.UnifiedPaymentVerifier
-    : baseSepoliaNet.addresses.contracts.UnifiedPaymentVerifier;
+    ? baseNet.addresses.contracts.UnifiedPaymentVerifierV2
+    : baseStagingNet.addresses.contracts.UnifiedPaymentVerifierV2;
 }
 
 function getOrchestratorAddress(chainId: ChainId): string {
   return chainId === 8453
-    ? baseNet.addresses.contracts.Orchestrator
-    : baseSepoliaNet.addresses.contracts.Orchestrator;
+    ? baseNet.addresses.contracts.OrchestratorV2
+    : baseStagingNet.addresses.contracts.OrchestratorV2;
 }
 
 function getOrchestratorAbi(chainId: ChainId) {
-  return chainId === 8453 ? baseOrchestratorJson : baseSepoliaOrchestratorJson;
+  return chainId === 8453
+    ? baseOrchestratorV2Json
+    : baseStagingOrchestratorV2Json;
 }
 
 export async function fetchIntentDetails(
   chainId: ChainId,
   intentHashHex: string
 ): Promise<IntentDetails> {
-  const rpc = RPC_URL[chainId];
-  const provider = new ethers.providers.JsonRpcProvider(rpc, chainId);
-  const orchestratorAddr = getOrchestratorAddress(chainId);
-  const orchestratorAbi = getOrchestratorAbi(chainId);
+  const provider = new ethers.providers.JsonRpcProvider(RPC_URL[chainId], chainId);
   const orchestrator = new ethers.Contract(
-    orchestratorAddr,
-    orchestratorAbi,
+    getOrchestratorAddress(chainId),
+    getOrchestratorAbi(chainId),
     provider
   );
 
   const res = await orchestrator.getIntent(intentHashHex);
+
+  if (!res.owner || res.owner === ethers.constants.AddressZero) {
+    throw new Error("Intent not found");
+  }
 
   return {
     amount: ethers.BigNumber.from(res.amount).toString(),
@@ -65,18 +68,15 @@ export async function fetchIntentDetails(
 export function normalizeHex32(value: string): string {
   const v = (value || "").trim();
   const prefixed = v.startsWith("0x") ? v : `0x${v}`;
-  // Treat empty or bare 0x as zero
   if (prefixed === "0x" || prefixed === "0x0") {
     return "0x" + "0".repeat(64);
   }
-  // Ensure even-length hex
   const hex = prefixed.length % 2 === 0 ? prefixed : "0x0" + prefixed.slice(2);
   if (!ethers.utils.isHexString(hex)) {
     throw new Error("Invalid hex string");
   }
   const raw = hex.slice(2);
   if (raw.length > 64) {
-    // Trim to lowest 32 bytes instead of throwing
     return "0x" + raw.slice(-64);
   }
   return "0x" + raw.padStart(64, "0");

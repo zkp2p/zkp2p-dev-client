@@ -5761,14 +5761,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@zkp2p/contracts-v2@npm:^0.0.6":
-  version: 0.0.6
-  resolution: "@zkp2p/contracts-v2@npm:0.0.6"
+"@zkp2p/contracts-v2@npm:0.2.0":
+  version: 0.2.0
+  resolution: "@zkp2p/contracts-v2@npm:0.2.0"
   dependencies:
     abitype: "npm:^1.0.0"
   peerDependencies:
     ethers: ^5.0.0 || ^6.0.0
-  checksum: 10/5cf0f75feaab7297368b07c90377715ff8578606300091cfebd1810f0dde3065a5c090b8fcd2ad6b048d0daf80041c59f949899f009c32e77f952fbed379b1bd
+  checksum: 10/bcae24b2ef0f38192628214174d91ef8e9473f083815ea9a066b6787ebe5b633861f249f8017388f0d465725fab9232e7c940d1068f84b323d5a400f75221487
   languageName: node
   linkType: hard
 
@@ -23986,7 +23986,7 @@ __metadata:
     "@typescript-eslint/eslint-plugin": "npm:^4.5.0"
     "@typescript-eslint/parser": "npm:^4.5.0"
     "@uidotdev/usehooks": "npm:^2.4.1"
-    "@zkp2p/contracts-v2": "npm:^0.0.6"
+    "@zkp2p/contracts-v2": "npm:0.2.0"
     addressparser: "npm:^1.0.1"
     assert: "npm:^2.1.0"
     atob: "npm:^2.1.2"
