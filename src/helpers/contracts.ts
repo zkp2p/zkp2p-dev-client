@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
 import * as baseNet from "@zkp2p/contracts-v2/networks/base";
 import * as baseStagingNet from "@zkp2p/contracts-v2/networks/baseStaging";
-import * as baseAbis from "@zkp2p/contracts-v2/abis/base";
-import * as baseStagingAbis from "@zkp2p/contracts-v2/abis/baseStaging";
+import baseOrchestratorV2Json from "@zkp2p/contracts-v2/abis/base/OrchestratorV2.json";
+import baseStagingOrchestratorV2Json from "@zkp2p/contracts-v2/abis/baseStaging/OrchestratorV2.json";
 
 type ChainId = 84532 | 8453;
 
@@ -20,22 +20,22 @@ const RPC_URL: Record<ChainId, string> = {
   8453: "https://mainnet.base.org",
 };
 
-function getNetworkBundle(chainId: ChainId) {
-  return chainId === 8453 ? baseNet : baseStagingNet;
-}
-
-function getProtocolViewerV2Abi(chainId: ChainId) {
-  return (chainId === 8453
-    ? baseAbis.ProtocolViewerV2
-    : baseStagingAbis.ProtocolViewerV2) as any;
-}
-
-function getChainLabel(chainId: ChainId): string {
-  return chainId === 8453 ? "Base (8453)" : "Base Sepolia (84532)";
-}
-
 export function getDefaultVerifier(chainId: ChainId): string {
-  return getNetworkBundle(chainId).addresses.contracts.UnifiedPaymentVerifierV2;
+  return chainId === 8453
+    ? baseNet.addresses.contracts.UnifiedPaymentVerifierV2
+    : baseStagingNet.addresses.contracts.UnifiedPaymentVerifierV2;
+}
+
+function getOrchestratorAddress(chainId: ChainId): string {
+  return chainId === 8453
+    ? baseNet.addresses.contracts.OrchestratorV2
+    : baseStagingNet.addresses.contracts.OrchestratorV2;
+}
+
+function getOrchestratorAbi(chainId: ChainId) {
+  return chainId === 8453
+    ? baseOrchestratorV2Json
+    : baseStagingOrchestratorV2Json;
 }
 
 export async function fetchIntentDetails(
@@ -43,55 +43,25 @@ export async function fetchIntentDetails(
   intentHashHex: string
 ): Promise<IntentDetails> {
   const provider = new ethers.providers.JsonRpcProvider(RPC_URL[chainId], chainId);
-  const network = getNetworkBundle(chainId);
-  const protocolViewer = new ethers.Contract(
-    network.addresses.contracts.ProtocolViewerV2,
-    getProtocolViewerV2Abi(chainId),
+  const orchestrator = new ethers.Contract(
+    getOrchestratorAddress(chainId),
+    getOrchestratorAbi(chainId),
     provider
   );
 
-  let view: any;
-  try {
-    view = await protocolViewer.getIntent(
-      network.addresses.contracts.OrchestratorV2,
-      intentHashHex
-    );
-  } catch (error: any) {
-    throw new Error(
-      error?.reason ||
-        error?.message ||
-        `Intent ${intentHashHex} was not found on ${getChainLabel(chainId)}`
-    );
-  }
+  const res = await orchestrator.getIntent(intentHashHex);
 
-  const intent = view.intent;
-  const paymentMethod = String(intent.paymentMethod || "");
-  const matchedPaymentMethod = Array.isArray(view.deposit?.paymentMethods)
-    ? view.deposit.paymentMethods.find(
-        (method: any) =>
-          String(method?.paymentMethod || "").toLowerCase() ===
-          paymentMethod.toLowerCase()
-      )
-    : undefined;
-  const payeeDetails =
-    intent.payeeId || matchedPaymentMethod?.verificationData?.payeeDetails || "";
-
-  if (
-    !intent?.owner ||
-    intent.owner === "0x0000000000000000000000000000000000000000"
-  ) {
-    throw new Error(
-      `Intent ${intentHashHex} was not found on ${getChainLabel(chainId)}`
-    );
+  if (!res.owner || res.owner === ethers.constants.AddressZero) {
+    throw new Error("Intent not found");
   }
 
   return {
-    amount: ethers.BigNumber.from(intent.amount).toString(),
-    timestampSec: ethers.BigNumber.from(intent.timestamp).toString(),
-    paymentMethod,
-    fiatCurrency: intent.fiatCurrency,
-    conversionRate: ethers.BigNumber.from(intent.conversionRate).toString(),
-    payeeDetails,
+    amount: ethers.BigNumber.from(res.amount).toString(),
+    timestampSec: ethers.BigNumber.from(res.timestamp).toString(),
+    paymentMethod: res.paymentMethod,
+    fiatCurrency: res.fiatCurrency,
+    conversionRate: ethers.BigNumber.from(res.conversionRate).toString(),
+    payeeDetails: res.payeeId,
   };
 }
 
