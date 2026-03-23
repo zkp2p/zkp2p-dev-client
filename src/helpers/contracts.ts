@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
 import * as baseNet from "@zkp2p/contracts-v2/networks/base";
 import * as baseSepoliaNet from "@zkp2p/contracts-v2/networks/baseSepolia";
-import baseOrchestratorJson from "@zkp2p/contracts-v2/abis/base/Orchestrator.json";
-import baseSepoliaOrchestratorJson from "@zkp2p/contracts-v2/abis/baseSepolia/Orchestrator.json";
+import baseProtocolViewerJson from "@zkp2p/contracts-v2/abis/base/ProtocolViewer.json";
+import baseSepoliaProtocolViewerJson from "@zkp2p/contracts-v2/abis/baseSepolia/ProtocolViewer.json";
 
 type ChainId = 84532 | 8453;
 
@@ -26,14 +26,16 @@ export function getDefaultVerifier(chainId: ChainId): string {
     : baseSepoliaNet.addresses.contracts.UnifiedPaymentVerifier;
 }
 
-function getOrchestratorAddress(chainId: ChainId): string {
+function getProtocolViewerAddress(chainId: ChainId): string {
   return chainId === 8453
-    ? baseNet.addresses.contracts.Orchestrator
-    : baseSepoliaNet.addresses.contracts.Orchestrator;
+    ? baseNet.addresses.contracts.ProtocolViewer
+    : baseSepoliaNet.addresses.contracts.ProtocolViewer;
 }
 
-function getOrchestratorAbi(chainId: ChainId) {
-  return chainId === 8453 ? baseOrchestratorJson : baseSepoliaOrchestratorJson;
+function getProtocolViewerAbi(chainId: ChainId) {
+  return chainId === 8453
+    ? baseProtocolViewerJson
+    : baseSepoliaProtocolViewerJson;
 }
 
 export async function fetchIntentDetails(
@@ -42,23 +44,34 @@ export async function fetchIntentDetails(
 ): Promise<IntentDetails> {
   const rpc = RPC_URL[chainId];
   const provider = new ethers.providers.JsonRpcProvider(rpc, chainId);
-  const orchestratorAddr = getOrchestratorAddress(chainId);
-  const orchestratorAbi = getOrchestratorAbi(chainId);
-  const orchestrator = new ethers.Contract(
-    orchestratorAddr,
-    orchestratorAbi,
+  const protocolViewerAddr = getProtocolViewerAddress(chainId);
+  const protocolViewerAbi = getProtocolViewerAbi(chainId);
+  const protocolViewer = new ethers.Contract(
+    protocolViewerAddr,
+    protocolViewerAbi,
     provider
   );
 
-  const res = await orchestrator.getIntent(intentHashHex);
+  const view = await protocolViewer.getIntent(intentHashHex);
+  const intent = view.intent;
+  const paymentMethod = String(intent.paymentMethod || "");
+  const matchedPaymentMethod = Array.isArray(view.deposit?.paymentMethods)
+    ? view.deposit.paymentMethods.find(
+        (method: any) =>
+          String(method?.paymentMethod || "").toLowerCase() ===
+          paymentMethod.toLowerCase()
+      )
+    : undefined;
+  const payeeDetails =
+    intent.payeeId || matchedPaymentMethod?.verificationData?.payeeDetails || "";
 
   return {
-    amount: ethers.BigNumber.from(res.amount).toString(),
-    timestampSec: ethers.BigNumber.from(res.timestamp).toString(),
-    paymentMethod: res.paymentMethod,
-    fiatCurrency: res.fiatCurrency,
-    conversionRate: ethers.BigNumber.from(res.conversionRate).toString(),
-    payeeDetails: res.payeeId,
+    amount: ethers.BigNumber.from(intent.amount).toString(),
+    timestampSec: ethers.BigNumber.from(intent.timestamp).toString(),
+    paymentMethod,
+    fiatCurrency: intent.fiatCurrency,
+    conversionRate: ethers.BigNumber.from(intent.conversionRate).toString(),
+    payeeDetails,
   };
 }
 
