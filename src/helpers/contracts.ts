@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
 import * as baseNet from "@zkp2p/contracts-v2/networks/base";
-import * as baseSepoliaNet from "@zkp2p/contracts-v2/networks/baseSepolia";
-import baseProtocolViewerJson from "@zkp2p/contracts-v2/abis/base/ProtocolViewer.json";
-import baseSepoliaProtocolViewerJson from "@zkp2p/contracts-v2/abis/baseSepolia/ProtocolViewer.json";
+import * as baseStagingNet from "@zkp2p/contracts-v2/networks/baseStaging";
+import * as baseAbis from "@zkp2p/contracts-v2/abis/base";
+import * as baseStagingAbis from "@zkp2p/contracts-v2/abis/baseStaging";
 
 type ChainId = 84532 | 8453;
 
@@ -20,39 +20,50 @@ const RPC_URL: Record<ChainId, string> = {
   8453: "https://mainnet.base.org",
 };
 
+function getNetworkBundle(chainId: ChainId) {
+  return chainId === 8453 ? baseNet : baseStagingNet;
+}
+
+function getProtocolViewerV2Abi(chainId: ChainId) {
+  return (chainId === 8453
+    ? baseAbis.ProtocolViewerV2
+    : baseStagingAbis.ProtocolViewerV2) as any;
+}
+
+function getChainLabel(chainId: ChainId): string {
+  return chainId === 8453 ? "Base (8453)" : "Base Sepolia (84532)";
+}
+
 export function getDefaultVerifier(chainId: ChainId): string {
-  return chainId === 8453
-    ? baseNet.addresses.contracts.UnifiedPaymentVerifier
-    : baseSepoliaNet.addresses.contracts.UnifiedPaymentVerifier;
-}
-
-function getProtocolViewerAddress(chainId: ChainId): string {
-  return chainId === 8453
-    ? baseNet.addresses.contracts.ProtocolViewer
-    : baseSepoliaNet.addresses.contracts.ProtocolViewer;
-}
-
-function getProtocolViewerAbi(chainId: ChainId) {
-  return chainId === 8453
-    ? baseProtocolViewerJson
-    : baseSepoliaProtocolViewerJson;
+  return getNetworkBundle(chainId).addresses.contracts.UnifiedPaymentVerifierV2;
 }
 
 export async function fetchIntentDetails(
   chainId: ChainId,
   intentHashHex: string
 ): Promise<IntentDetails> {
-  const rpc = RPC_URL[chainId];
-  const provider = new ethers.providers.JsonRpcProvider(rpc, chainId);
-  const protocolViewerAddr = getProtocolViewerAddress(chainId);
-  const protocolViewerAbi = getProtocolViewerAbi(chainId);
+  const provider = new ethers.providers.JsonRpcProvider(RPC_URL[chainId], chainId);
+  const network = getNetworkBundle(chainId);
   const protocolViewer = new ethers.Contract(
-    protocolViewerAddr,
-    protocolViewerAbi,
+    network.addresses.contracts.ProtocolViewerV2,
+    getProtocolViewerV2Abi(chainId),
     provider
   );
 
-  const view = await protocolViewer.getIntent(intentHashHex);
+  let view: any;
+  try {
+    view = await protocolViewer.getIntent(
+      network.addresses.contracts.OrchestratorV2,
+      intentHashHex
+    );
+  } catch (error: any) {
+    throw new Error(
+      error?.reason ||
+        error?.message ||
+        `Intent ${intentHashHex} was not found on ${getChainLabel(chainId)}`
+    );
+  }
+
   const intent = view.intent;
   const paymentMethod = String(intent.paymentMethod || "");
   const matchedPaymentMethod = Array.isArray(view.deposit?.paymentMethods)
@@ -64,6 +75,15 @@ export async function fetchIntentDetails(
     : undefined;
   const payeeDetails =
     intent.payeeId || matchedPaymentMethod?.verificationData?.payeeDetails || "";
+
+  if (
+    !intent?.owner ||
+    intent.owner === "0x0000000000000000000000000000000000000000"
+  ) {
+    throw new Error(
+      `Intent ${intentHashHex} was not found on ${getChainLabel(chainId)}`
+    );
+  }
 
   return {
     amount: ethers.BigNumber.from(intent.amount).toString(),
@@ -78,18 +98,15 @@ export async function fetchIntentDetails(
 export function normalizeHex32(value: string): string {
   const v = (value || "").trim();
   const prefixed = v.startsWith("0x") ? v : `0x${v}`;
-  // Treat empty or bare 0x as zero
   if (prefixed === "0x" || prefixed === "0x0") {
     return "0x" + "0".repeat(64);
   }
-  // Ensure even-length hex
   const hex = prefixed.length % 2 === 0 ? prefixed : "0x0" + prefixed.slice(2);
   if (!ethers.utils.isHexString(hex)) {
     throw new Error("Invalid hex string");
   }
   const raw = hex.slice(2);
   if (raw.length > 64) {
-    // Trim to lowest 32 bytes instead of throwing
     return "0x" + raw.slice(-64);
   }
   return "0x" + raw.padStart(64, "0");
