@@ -48,10 +48,8 @@ const DEFAULT_CALLDATA_INPUTS = {
 };
 
 // Helper: derive platform (e.g., "venmo") from action type (e.g., "transfer_venmo").
-const derivePlatformFromActionType = (action: string, fallback: string) => {
-  if (!action) return fallback;
-  const parts = action.split("_");
-  return parts.length > 1 ? parts[parts.length - 1] : fallback;
+const derivePlatformFromActionType = (_action: string, fallback: string) => {
+  return fallback;
 };
 
 type GenericRecord = Record<string, unknown>;
