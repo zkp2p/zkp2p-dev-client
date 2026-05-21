@@ -595,8 +595,7 @@ const Home: React.FC = () => {
     openSidebar("/settings");
   };
 
-  const resolveAttestationPlatform = () =>
-    metadataPlatform.trim() || paymentPlatform.trim();
+  const resolveBuyerTeePlatform = () => paymentPlatform.trim();
 
   const resolveVerificationIntentHash = () => {
     const stepFourHash = normalizeHex32(verifyIntentHash);
@@ -801,7 +800,7 @@ const Home: React.FC = () => {
       }
 
       if (isBuyerTeePaymentProofInput(proofData)) {
-        const attestationPlatform = resolveAttestationPlatform();
+        const attestationPlatform = resolveBuyerTeePlatform();
         const verifyMetadata = parseBuyerTeeVerifyMetadataJson(
           buyerTeeVerifyMetadataJson
         );
