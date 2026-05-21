@@ -1640,11 +1640,9 @@ const Home: React.FC = () => {
                           }
                           loading={attestationLoading}
                           height={48}
-                          width={isBuyerTeeEngine ? 260 : 216}
+                          width={216}
                         >
-                          {isBuyerTeeEngine
-                            ? "Verify Buyer TEE Proof"
-                            : "Verify Proof"}
+                          {isBuyerTeeEngine ? "Verify" : "Verify Proof"}
                         </Button>
                         <Button
                           onClick={handleGenerateCalldata}
