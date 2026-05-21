@@ -14,6 +14,9 @@ export type {
   ExtensionRequestMetadataMessage,
   ExtensionRequestMetadata,
   ExtensionNotaryProofRequest,
+  ProofCaptureMode,
+  BuyerTeePaymentCapture,
+  BuyerTeePaymentParams,
 } from "./browserExtension";
 export {
   ExtensionPostMessage,

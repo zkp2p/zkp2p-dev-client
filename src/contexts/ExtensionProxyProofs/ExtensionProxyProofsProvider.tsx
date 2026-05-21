@@ -7,6 +7,7 @@ import {
   ExtensionPostMessage,
   ExtensionReceiveMessage,
   ExtensionRequestMetadataMessage,
+  ProofCaptureMode,
 } from '@helpers/types';
 
 import ExtensionProxyProofsContext, { MetadataInfo } from './ExtensionProxyProofsContext';
@@ -69,10 +70,26 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     }
   }, []);
 
-  const openNewTab = (actionType: string, platform: string) => {
-    window.postMessage({ type: ExtensionPostMessage.OPEN_NEW_TAB, actionType, platform }, '*');
+  const openNewTab = (
+    actionType: string,
+    platform: string,
+    captureMode?: ProofCaptureMode,
+    attestationServiceUrl?: string | null,
+  ) => {
+    const message: Record<string, unknown> = {
+      type: ExtensionPostMessage.OPEN_NEW_TAB,
+      actionType,
+      platform,
+    };
 
-    console.log('Posted Message: ', ExtensionPostMessage.OPEN_NEW_TAB, actionType, platform);
+    if (captureMode) {
+      message.captureMode = captureMode;
+      message.attestationServiceUrl = attestationServiceUrl;
+    }
+
+    window.postMessage(message, '*');
+
+    console.log('Posted Message: ', ExtensionPostMessage.OPEN_NEW_TAB, actionType, platform, captureMode, attestationServiceUrl);
   };
 
   const openSidebar = (route: string) => {
@@ -143,12 +160,15 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     console.log('event.data', event.data);
 
     const platform = event.data.platform as string;
+    const buyerTeeCapture = event.data.buyerTeeCapture ?? null;
     
     setPlatformMetadata(prev => ({
       ...prev,
       [platform]: {
         metadata: event.data.metadata,
-        expiresAt: event.data.expiresAt
+        expiresAt: event.data.expiresAt,
+        buyerTeeCapture,
+        errorMessage: event.data.errorMessage ?? null,
       }
     }));
   }, []);
