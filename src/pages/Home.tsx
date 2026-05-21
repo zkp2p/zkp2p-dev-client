@@ -190,36 +190,16 @@ const isBuyerTeePaymentParams = (
       typeof entry === "boolean"
   );
 
-const findBuyerTeeCaptureParams = (
-  params: unknown,
-  originalIndex: number
-): BuyerTeePaymentParams | null => {
-  if (!Array.isArray(params)) return null;
-
-  return (
-    params.find(
-      (row): row is BuyerTeePaymentParams =>
-        isBuyerTeePaymentParams(row) && row.index === originalIndex
-    ) ?? null
-  );
-};
-
 const buildBuyerTeeInputParams = (
-  metadata: ExtensionRequestMetadata,
-  captureParams: unknown
+  metadata: ExtensionRequestMetadata
 ): BuyerTeePaymentParams => {
-  const captureRow = findBuyerTeeCaptureParams(
-    captureParams,
-    metadata.originalIndex
-  );
-
-  if (!captureRow) {
+  if (!isBuyerTeePaymentParams(metadata.params)) {
     throw new Error(
-      "Buyer TEE metadata unavailable for the selected payment. Re-authenticate and try again."
+      "Buyer TEE params are missing from the selected metadata row. Reload the extension, re-authenticate, and try again."
     );
   }
 
-  return { ...captureRow };
+  return { ...metadata.params };
 };
 
 const formatValidationErrors = (errors: unknown) => {
@@ -711,24 +691,18 @@ const Home: React.FC = () => {
 
     try {
       const metadataInfo = platformMetadata[metadataPlatform];
-      const buyerTeeCapture = metadataInfo?.buyerTeeCapture;
-      if (!buyerTeeCapture) {
+      const capture = metadataInfo?.buyerTeeCapture;
+      if (!capture) {
         throw new Error(
           metadataInfo?.errorMessage ||
             "Buyer TEE session capture unavailable. Re-authenticate and try again."
         );
       }
-      if (!attestationBaseUrl.trim()) {
-        throw new Error("Attestation Service URL is not configured.");
-      }
 
-      const inputParams = buildBuyerTeeInputParams(
-        meta,
-        buyerTeeCapture.params
-      );
+      const inputParams = buildBuyerTeeInputParams(meta);
       const buyerTeeProof: BuyerTeePaymentProofInput = {
         proofType: "buyerTee",
-        encryptedSessionMaterial: buyerTeeCapture.encryptedSessionMaterial,
+        encryptedSessionMaterial: capture.encryptedSessionMaterial,
         params: inputParams,
       };
 

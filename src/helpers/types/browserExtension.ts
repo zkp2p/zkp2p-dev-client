@@ -41,8 +41,10 @@ export type ExtensionRequestMetadata = {
   amount?: string;
   date?: string;
   currency?: string;
+  paymentId?: string;
   originalIndex: number;
   hidden: boolean;
+  params?: BuyerTeePaymentParams;
   [key: string]: unknown;
 };
 
@@ -50,7 +52,6 @@ export type ProofCaptureMode = "sellerCredential" | "buyerTee";
 
 export type BuyerTeePaymentCapture = {
   encryptedSessionMaterial: string;
-  params: BuyerTeePaymentParams[];
 };
 
 export type BuyerTeePaymentParams = Record<string, string | number | boolean>;
