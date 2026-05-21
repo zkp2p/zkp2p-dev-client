@@ -46,7 +46,7 @@ export type ExtensionRequestMetadata = {
   [key: string]: unknown;
 };
 
-export type ProofCaptureMode = "buyerTee";
+export type ProofCaptureMode = "sellerCredential" | "buyerTee";
 
 export type BuyerTeePaymentCapture = {
   encryptedSessionMaterial: string;

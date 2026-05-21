@@ -59,10 +59,12 @@ const derivePlatformFromActionType = (action: string, fallback: string) => {
 
 type GenericRecord = Record<string, unknown>;
 type ProofEngine = "reclaim" | "buyerTee";
+type BuyerTeePaymentParams = Record<string, string | number | boolean>;
 
 type BuyerTeePaymentProofInput = {
   proofType: "buyerTee";
   encryptedSessionMaterial: string;
+  params: BuyerTeePaymentParams;
 };
 
 type BuyerTeePaymentAttestation = {
@@ -173,34 +175,39 @@ const isBuyerTeePaymentProofInput = (
 ): value is BuyerTeePaymentProofInput =>
   isRecord(value) &&
   value.proofType === "buyerTee" &&
-  typeof value.encryptedSessionMaterial === "string";
+  typeof value.encryptedSessionMaterial === "string" &&
+  isBuyerTeePaymentParams(value.params);
 
-const valuesMatchPaymentIndex = (value: unknown, originalIndex: number) => {
-  if (typeof value === "number") return value === originalIndex;
-  if (typeof value === "string") return value === String(originalIndex);
-  return false;
-};
+const isBuyerTeePaymentParams = (
+  value: unknown
+): value is BuyerTeePaymentParams =>
+  isRecord(value) &&
+  !Array.isArray(value) &&
+  Object.values(value).every(
+    (entry) =>
+      typeof entry === "string" ||
+      typeof entry === "number" ||
+      typeof entry === "boolean"
+  );
 
 const findBuyerTeeCaptureParams = (
   params: unknown,
   originalIndex: number
-): GenericRecord | null => {
+): BuyerTeePaymentParams | null => {
   if (!Array.isArray(params)) return null;
 
   return (
     params.find(
-      (row): row is GenericRecord =>
-        isRecord(row) &&
-        (valuesMatchPaymentIndex(row.index, originalIndex) ||
-          valuesMatchPaymentIndex(row.originalIndex, originalIndex))
+      (row): row is BuyerTeePaymentParams =>
+        isBuyerTeePaymentParams(row) && row.index === originalIndex
     ) ?? null
   );
 };
 
-const buildBuyerTeeInputMetadata = (
+const buildBuyerTeeInputParams = (
   metadata: ExtensionRequestMetadata,
   captureParams: unknown
-): GenericRecord => {
+): BuyerTeePaymentParams => {
   const captureRow = findBuyerTeeCaptureParams(
     captureParams,
     metadata.originalIndex
@@ -263,6 +270,12 @@ const parseBuyerTeeVerifyMetadataJson = (value: string) => {
   const parsed = JSON.parse(trimmed);
   if (!isRecord(parsed) || Array.isArray(parsed)) {
     throw new Error("Buyer TEE verify metadata must be a JSON object.");
+  }
+
+  if (!isBuyerTeePaymentParams(parsed)) {
+    throw new Error(
+      "Buyer TEE metadata values must be strings, numbers, or booleans."
+    );
   }
 
   return parsed;
@@ -709,17 +722,18 @@ const Home: React.FC = () => {
         throw new Error("Attestation Service URL is not configured.");
       }
 
-      const buyerTeeProof = {
-        proofType: "buyerTee",
-        encryptedSessionMaterial: buyerTeeCapture.encryptedSessionMaterial,
-      };
-      const inputMetadata = buildBuyerTeeInputMetadata(
+      const inputParams = buildBuyerTeeInputParams(
         meta,
         buyerTeeCapture.params
       );
+      const buyerTeeProof: BuyerTeePaymentProofInput = {
+        proofType: "buyerTee",
+        encryptedSessionMaterial: buyerTeeCapture.encryptedSessionMaterial,
+        params: inputParams,
+      };
 
       setResultProof(JSON.stringify(buyerTeeProof, null, 2));
-      setBuyerTeeVerifyMetadataJson(JSON.stringify(inputMetadata, null, 2));
+      setBuyerTeeVerifyMetadataJson(JSON.stringify(inputParams, null, 2));
       setProofStatus("success");
       setProofGenerationDuration(Date.now() - startedAt);
     } catch (error) {
@@ -823,7 +837,7 @@ const Home: React.FC = () => {
         };
         const payload = {
           encryptedSessionMaterial: proofData.encryptedSessionMaterial,
-          metadata: verifyMetadata,
+          params: verifyMetadata,
           chainId,
           intent: buildBuyerTeeIntentDetails(intentMetadata),
         };
