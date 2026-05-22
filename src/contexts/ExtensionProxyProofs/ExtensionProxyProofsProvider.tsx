@@ -75,6 +75,7 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     platform: string,
     captureMode?: ProofCaptureMode,
     attestationServiceUrl?: string | null,
+    attestationActionType?: string | null,
   ) => {
     const message: Record<string, unknown> = {
       type: ExtensionPostMessage.OPEN_NEW_TAB,
@@ -85,11 +86,12 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     if (captureMode) {
       message.captureMode = captureMode;
       message.attestationServiceUrl = attestationServiceUrl;
+      message.attestationActionType = attestationActionType;
     }
 
     window.postMessage(message, '*');
 
-    console.log('Posted Message: ', ExtensionPostMessage.OPEN_NEW_TAB, actionType, platform, captureMode, attestationServiceUrl);
+    console.log('Posted Message: ', ExtensionPostMessage.OPEN_NEW_TAB, actionType, platform, captureMode, attestationServiceUrl, attestationActionType);
   };
 
   const openSidebar = (route: string) => {

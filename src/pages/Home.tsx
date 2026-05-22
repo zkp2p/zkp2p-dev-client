@@ -646,7 +646,8 @@ const Home: React.FC = () => {
         actionType,
         paymentPlatform,
         BUYER_TEE_CAPTURE_MODE,
-        attestationBaseUrl.trim() || null
+        attestationBaseUrl.trim() || null,
+        resolveVerifyActionType()
       );
     } else {
       openNewTab(actionType, paymentPlatform);
