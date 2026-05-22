@@ -14,10 +14,28 @@ import {
 import { Button } from "@components/common/Button";
 import { Input } from "@components/common/Input";
 import useExtensionProxyProofs from "@hooks/contexts/useExtensionProxyProofs";
-import {
+import type {
   ExtensionRequestMetadata,
   ProofGenerationStatusType,
 } from "@helpers/types";
+import type {
+  BuyerTeePaymentProofInput,
+  GenericRecord,
+  ProofEngine,
+  ProofRoute,
+} from "@helpers/attestation";
+import {
+  buildBuyerTeeInputParams,
+  deriveIntentAmountFromMetadata,
+  deriveIntentTimestampSecFromMetadata,
+  extractBuyerTeeAttestation,
+  formatAttestationErrorMessage,
+  getVisibleMetadataEntries,
+  isBuyerTeePaymentProofInput,
+  isRecord,
+  normalizeProofPayload,
+  parseBuyerTeeVerifyMetadataJson,
+} from "@helpers/attestation";
 import chromeSvg from "../assets/images/browsers/chrome.svg";
 import braveSvg from "../assets/images/browsers/brave.svg";
 import { AccessoryButton } from "@components/common/AccessoryButton";
@@ -55,254 +73,6 @@ const derivePlatformFromActionType = (action: string, fallback: string) => {
   if (!action) return fallback;
   const parts = action.split("_");
   return parts.length > 1 ? parts[parts.length - 1] : fallback;
-};
-
-type GenericRecord = Record<string, unknown>;
-type ProofEngine = "reclaim" | "buyerTee";
-type BuyerTeePaymentParams = Record<string, string | number | boolean>;
-
-type ProofRoute = {
-  captureActionType: string;
-  capturePlatform: string;
-  metadataGroup: string;
-  verifierActionType: string;
-  verifierPlatform: string;
-};
-
-type BuyerTeePaymentProofInput = {
-  proofType: "buyerTee";
-  encryptedSessionMaterial: string;
-  params: BuyerTeePaymentParams;
-};
-
-type BuyerTeePaymentAttestation = {
-  encodedPaymentDetails: string;
-  signature: string;
-  signer: string;
-  typedDataValue: {
-    dataHash: string;
-    intentHash: string;
-    releaseAmount: bigint | number | string;
-  };
-};
-
-type NormalizedProofObject = {
-  claim: GenericRecord;
-  signatures: unknown;
-};
-
-const isRecord = (value: unknown): value is GenericRecord =>
-  typeof value === "object" && value !== null;
-
-const normalizeSingleProofObject = (
-  value: unknown
-): NormalizedProofObject | null => {
-  if (!isRecord(value)) return null;
-
-  if (isRecord(value.claim)) {
-    return {
-      claim: value.claim,
-      signatures: value.signatures ?? {},
-    };
-  }
-
-  if (isRecord(value.proof) && isRecord(value.proof.claim)) {
-    return {
-      claim: value.proof.claim,
-      signatures: value.proof.signatures ?? {},
-    };
-  }
-
-  return null;
-};
-
-const normalizeProofPayload = (
-  value: unknown
-): NormalizedProofObject | NormalizedProofObject[] => {
-  const normalizeArray = (items: unknown[]) => {
-    const normalized = items
-      .map((item) => normalizeSingleProofObject(item))
-      .filter((item): item is NormalizedProofObject => item !== null);
-
-    if (!normalized.length || normalized.length !== items.length) {
-      throw new Error(
-        "Invalid proof JSON. Expected a proof object or an array of proof objects."
-      );
-    }
-
-    return normalized;
-  };
-
-  if (Array.isArray(value)) {
-    return normalizeArray(value);
-  }
-
-  const single = normalizeSingleProofObject(value);
-  if (single) return single;
-
-  if (isRecord(value) && Array.isArray(value.proof)) {
-    return normalizeArray(value.proof);
-  }
-
-  if (isRecord(value) && Array.isArray(value.proofs)) {
-    return normalizeArray(value.proofs);
-  }
-
-  throw new Error(
-    "Invalid proof JSON. Expected a proof object or an array of proof objects."
-  );
-};
-
-const isBuyerTeePaymentAttestation = (
-  value: unknown
-): value is BuyerTeePaymentAttestation => {
-  if (!isRecord(value) || !isRecord(value.typedDataValue)) return false;
-
-  return (
-    typeof value.encodedPaymentDetails === "string" &&
-    typeof value.signature === "string" &&
-    typeof value.signer === "string" &&
-    typeof value.typedDataValue.dataHash === "string" &&
-    typeof value.typedDataValue.intentHash === "string" &&
-    value.typedDataValue.releaseAmount != null
-  );
-};
-
-const extractBuyerTeeAttestation = (
-  value: unknown
-): BuyerTeePaymentAttestation | null => {
-  if (isBuyerTeePaymentAttestation(value)) return value;
-  if (!isRecord(value)) return null;
-  if (isBuyerTeePaymentAttestation(value.attestation)) return value.attestation;
-  if (isBuyerTeePaymentAttestation(value.proof)) return value.proof;
-  return null;
-};
-
-const isBuyerTeePaymentProofInput = (
-  value: unknown
-): value is BuyerTeePaymentProofInput =>
-  isRecord(value) &&
-  value.proofType === "buyerTee" &&
-  typeof value.encryptedSessionMaterial === "string" &&
-  isBuyerTeePaymentParams(value.params);
-
-const isBuyerTeePaymentParams = (
-  value: unknown
-): value is BuyerTeePaymentParams =>
-  isRecord(value) &&
-  !Array.isArray(value) &&
-  Object.values(value).every(
-    (entry) =>
-      typeof entry === "string" ||
-      typeof entry === "number" ||
-      typeof entry === "boolean"
-  );
-
-const buildBuyerTeeInputParams = (
-  metadata: ExtensionRequestMetadata
-): BuyerTeePaymentParams => {
-  if (!isBuyerTeePaymentParams(metadata.params)) {
-    throw new Error(
-      "Buyer TEE params are missing from the selected metadata row. Reload the extension, re-authenticate, and try again."
-    );
-  }
-
-  return { ...metadata.params };
-};
-
-const formatValidationErrors = (errors: unknown) => {
-  if (!Array.isArray(errors)) return null;
-
-  const formatted = errors
-    .map((error) => {
-      if (!isRecord(error)) return String(error);
-      const path =
-        typeof error.path === "string" && error.path ? error.path : "(root)";
-      const message =
-        typeof error.message === "string" && error.message
-          ? error.message
-          : JSON.stringify(error);
-      return `${path}: ${message}`;
-    })
-    .filter(Boolean);
-
-  return formatted.length ? formatted.join("; ") : null;
-};
-
-const formatAttestationErrorMessage = (
-  responseRecord: GenericRecord,
-  responseText: string,
-  status: number
-) => {
-  const responseObject = responseRecord.responseObject;
-  const validationErrors = formatValidationErrors(
-    isRecord(responseObject) ? responseObject.errors : responseRecord.errors
-  );
-
-  const message = String(
-    responseRecord.error ||
-      responseRecord.message ||
-      responseText ||
-      `HTTP error! status: ${status}`
-  );
-
-  return validationErrors ? `${message}: ${validationErrors}` : message;
-};
-
-const parseBuyerTeeVerifyMetadataJson = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    throw new Error("Enter buyer TEE verify metadata JSON.");
-  }
-
-  const parsed = JSON.parse(trimmed);
-  if (!isRecord(parsed) || Array.isArray(parsed)) {
-    throw new Error("Buyer TEE verify metadata must be a JSON object.");
-  }
-
-  if (!isBuyerTeePaymentParams(parsed)) {
-    throw new Error(
-      "Buyer TEE metadata values must be strings, numbers, or booleans."
-    );
-  }
-
-  return parsed;
-};
-
-const deriveMockAmount = (metadata?: GenericRecord) => {
-  const rawAmount = metadata?.amount;
-  if (typeof rawAmount !== "string" && typeof rawAmount !== "number") {
-    return DEFAULT_CALLDATA_INPUTS.intentAmount;
-  }
-
-  const normalized = String(rawAmount).replace(/,/g, "");
-  const match = normalized.match(/-?\s*[$€£]?\s*([0-9]+(?:\.[0-9]+)?)/);
-  if (!match) return DEFAULT_CALLDATA_INPUTS.intentAmount;
-
-  const parsed = Number(match[1]);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_CALLDATA_INPUTS.intentAmount;
-  }
-
-  return Math.round(parsed * 1_000_000).toString();
-};
-
-const deriveMockTimestampSec = (metadata?: GenericRecord) => {
-  const rawDate = metadata?.date;
-  if (typeof rawDate !== "string" && typeof rawDate !== "number") {
-    return DEFAULT_CALLDATA_INPUTS.intentTimestamp;
-  }
-
-  if (typeof rawDate === "number") {
-    return Math.floor(rawDate).toString();
-  }
-
-  const parsed = Date.parse(rawDate);
-  if (!Number.isFinite(parsed)) {
-    return DEFAULT_CALLDATA_INPUTS.intentTimestamp;
-  }
-
-  return Math.floor(parsed / 1000).toString();
 };
 
 // Step indicator component
@@ -407,8 +177,6 @@ const Home: React.FC = () => {
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
-  // Input changes no longer used (auto-fetched intent); keep for completeness
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [generatedCalldata, setGeneratedCalldata] = useState<string>("");
   const [calldataError, setCalldataError] = useState<string | null>(null);
   // Step 4 independent intent hash for verification
@@ -608,13 +376,16 @@ const Home: React.FC = () => {
     paymentMethodHex.trim() || defaultPaymentMethodHex;
 
   const resolveProofRoute = (): ProofRoute => {
+    const captureActionType = actionType.trim();
     const metadataGroup = metadataPlatform.trim();
 
     return {
-      captureActionType: actionType.trim(),
+      captureActionType,
       capturePlatform: paymentPlatform.trim(),
       metadataGroup,
-      verifierActionType: `transfer_${metadataGroup}`,
+      verifierActionType: isBuyerTeeEngine
+        ? captureActionType
+        : `transfer_${metadataGroup}`,
       verifierPlatform: paymentPlatform.trim(),
     };
   };
@@ -637,11 +408,17 @@ const Home: React.FC = () => {
     const intentTimestamp =
       calldataInputs.intentTimestamp !== DEFAULT_CALLDATA_INPUTS.intentTimestamp
         ? calldataInputs.intentTimestamp
-        : deriveMockTimestampSec(metadata);
+        : deriveIntentTimestampSecFromMetadata(
+            metadata,
+            DEFAULT_CALLDATA_INPUTS.intentTimestamp
+          );
     const intentAmount =
       calldataInputs.intentAmount !== DEFAULT_CALLDATA_INPUTS.intentAmount
         ? calldataInputs.intentAmount
-        : deriveMockAmount(metadata);
+        : deriveIntentAmountFromMetadata(
+            metadata,
+            DEFAULT_CALLDATA_INPUTS.intentAmount
+          );
 
     setVerifyIntentHash(hex);
 
@@ -668,8 +445,7 @@ const Home: React.FC = () => {
         route.captureActionType,
         route.capturePlatform,
         BUYER_TEE_CAPTURE_MODE,
-        attestationBaseUrl.trim() || null,
-        route.verifierActionType
+        attestationBaseUrl.trim() || null
       );
     } else {
       openNewTab(route.captureActionType, route.capturePlatform);
@@ -1244,39 +1020,45 @@ const Home: React.FC = () => {
               )}
               {platformMetadata[metadataPlatform]?.metadata ? (
                 <MetadataList>
-                  {platformMetadata[metadataPlatform].metadata.map((m) => (
-                    <MetadataItem
-                      key={m.originalIndex}
-                      selected={
-                        selectedMetadata?.originalIndex === m.originalIndex
-                      }
-                    >
-                      <MetadataInfo>
-                        <ThemedText.BodySmall>
-                          Amount: {m.amount || "N/A"}
-                        </ThemedText.BodySmall>
-                        <ThemedText.BodySmall>
-                          Date: {m.date || "N/A"}
-                        </ThemedText.BodySmall>
-                        <ThemedText.BodySmall>
-                          Recipient: {m.recipient || "N/A"}
-                        </ThemedText.BodySmall>
-                        <ThemedText.BodySmall>
-                          Index: {m.originalIndex}
-                        </ThemedText.BodySmall>
-                      </MetadataInfo>
-                      <AccessoryButton
-                        onClick={() => handleGenerateProof(m)}
-                        icon="chevronRight"
-                        disabled={
-                          selectedMetadata?.originalIndex === m.originalIndex &&
-                          proofStatus === "generating"
+                  {platformMetadata[metadataPlatform].metadata.map((m) => {
+                    const metadataEntries = getVisibleMetadataEntries(m);
+
+                    return (
+                      <MetadataItem
+                        key={m.originalIndex}
+                        selected={
+                          selectedMetadata?.originalIndex === m.originalIndex
                         }
                       >
-                        Prove
-                      </AccessoryButton>
-                    </MetadataItem>
-                  ))}
+                        <MetadataInfo>
+                          {metadataEntries.length ? (
+                            metadataEntries.map((entry) => (
+                              <ThemedText.BodySmall key={entry.key}>
+                                {entry.key}: {entry.value}
+                              </ThemedText.BodySmall>
+                            ))
+                          ) : (
+                            <ThemedText.BodySmall>
+                              Metadata: N/A
+                            </ThemedText.BodySmall>
+                          )}
+                          <ThemedText.BodySmall>
+                            Index: {m.originalIndex}
+                          </ThemedText.BodySmall>
+                        </MetadataInfo>
+                        <AccessoryButton
+                          onClick={() => handleGenerateProof(m)}
+                          icon="chevronRight"
+                          disabled={
+                            selectedMetadata?.originalIndex ===
+                              m.originalIndex && proofStatus === "generating"
+                          }
+                        >
+                          Prove
+                        </AccessoryButton>
+                      </MetadataItem>
+                    );
+                  })}
                 </MetadataList>
               ) : (
                 <EmptyStateContainer>
@@ -1503,7 +1285,7 @@ const Home: React.FC = () => {
                           onChange={(e) =>
                             setBuyerTeeVerifyMetadataJson(e.target.value)
                           }
-                          placeholder='{"index":9}'
+                          placeholder="{}"
                           spellCheck="false"
                           readOnly={attestationLoading}
                         />

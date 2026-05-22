@@ -23,8 +23,7 @@ interface ExtensionProxyProofsValues {
     actionType: string,
     platform: string,
     captureMode?: ProofCaptureMode,
-    attestationServiceUrl?: string | null,
-    attestationActionType?: string | null
+    attestationServiceUrl?: string | null
   ) => void;
   openSidebar: (path: string) => void;
   platformMetadata: Record<string, MetadataInfo>;
@@ -44,8 +43,7 @@ const defaultValues: ExtensionProxyProofsValues = {
     _actionType: string,
     _platform: string,
     _captureMode?: ProofCaptureMode,
-    _attestationServiceUrl?: string | null,
-    _attestationActionType?: string | null
+    _attestationServiceUrl?: string | null
   ) => { },
   openSidebar: (_path: string) => { },
   platformMetadata: {} as Record<string, MetadataInfo>,
