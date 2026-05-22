@@ -438,6 +438,7 @@ const Home: React.FC = () => {
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const isBuyerTeeEngine = proofEngine === "buyerTee";
+  const defaultPaymentMethodHex = keccak256(paymentPlatform);
 
   useEffect(() => {
     localStorage.setItem("chainId", chainId.toString());
@@ -603,6 +604,9 @@ const Home: React.FC = () => {
     openSidebar("/settings");
   };
 
+  const resolvePaymentMethodHex = () =>
+    paymentMethodHex.trim() || defaultPaymentMethodHex;
+
   const resolveProofRoute = (): ProofRoute => {
     const metadataGroup = metadataPlatform.trim();
 
@@ -647,7 +651,7 @@ const Home: React.FC = () => {
       fiatCurrency: calldataInputs.fiatCurrency,
       intentHash: hex,
       payeeDetails: calldataInputs.payeeDetails,
-      paymentMethod: paymentMethodHex || keccak256(paymentPlatform),
+      paymentMethod: resolvePaymentMethodHex(),
       timestampBufferMs: BUYER_TEE_TIMESTAMP_BUFFER_MS,
       timestampMs: ethers.BigNumber.from(intentTimestamp).mul(1000).toString(),
     };
@@ -760,7 +764,7 @@ const Home: React.FC = () => {
           calldataInputs.intentTimestamp || "0"
         );
         const timestampMs = timestampSec.mul(1000).toString();
-        const paymentMethod = paymentMethodHex || keccak256(paymentPlatform);
+        const paymentMethod = resolvePaymentMethodHex();
         const fiatCurrency = calldataInputs.fiatCurrency;
         const conversionRate = calldataInputs.conversionRate;
         const payeeDetails = calldataInputs.payeeDetails;
@@ -1609,7 +1613,7 @@ const Home: React.FC = () => {
                                   setPaymentMethodHex(e.target.value)
                                 }
                                 valueFontSize="14px"
-                                placeholder="0x…"
+                                placeholder={defaultPaymentMethodHex}
                               />
                               <Input
                                 label="Verifying Contract"
