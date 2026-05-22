@@ -596,6 +596,7 @@ const Home: React.FC = () => {
   };
 
   const resolveBuyerTeePlatform = () => paymentPlatform.trim();
+  const resolveVerifyActionType = () => `transfer_${metadataPlatform.trim()}`;
 
   const resolveVerificationIntentHash = () => {
     const stepFourHash = normalizeHex32(verifyIntentHash);
@@ -762,7 +763,7 @@ const Home: React.FC = () => {
 
         console.log("zkTLS payload:", payload);
 
-        const endpoint = `${attestationBaseUrl.trim()}/verify/${paymentPlatform}/transfer_${metadataPlatform}`;
+        const endpoint = `${attestationBaseUrl.trim()}/verify/${paymentPlatform}/${resolveVerifyActionType()}`;
         const response = await fetch(endpoint, {
           method: "POST",
           headers: {
@@ -814,7 +815,7 @@ const Home: React.FC = () => {
           chainId,
           intent: buildBuyerTeeIntentDetails(intentMetadata),
         };
-        const endpoint = `${attestationBaseUrl.trim()}/buyer/verify/${attestationPlatform}/${actionType.trim()}`;
+        const endpoint = `${attestationBaseUrl.trim()}/buyer/verify/${attestationPlatform}/${resolveVerifyActionType()}`;
 
         console.log("Buyer TEE payload:", payload);
 
