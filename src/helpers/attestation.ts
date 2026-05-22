@@ -42,9 +42,33 @@ type MetadataEntry = {
 };
 
 const HIDDEN_METADATA_KEYS = new Set(["hidden", "originalIndex", "params"]);
+const BUYER_TEE_INDEX_PARAM_ROUTES = new Set([
+  "bankofamerica:transfer_zelle",
+  "cashapp:transfer_cashapp",
+  "chase:transfer_zelle",
+  "citi:transfer_zelle",
+  "idfc:transfer_idfc",
+  "revolut:transfer_revolut",
+  "venmo:transfer_venmo",
+]);
 
 export const isRecord = (value: unknown): value is GenericRecord =>
   typeof value === "object" && value !== null;
+
+const buyerTeeRouteKey = (route: ProofRoute) =>
+  `${route.verifierPlatform.trim().toLowerCase()}:${route.verifierActionType.trim()}`;
+
+const normalizeIndexParam = (value: BuyerTeePaymentParams[string]) => {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    return Number(value.trim());
+  }
+
+  throw new Error("Buyer TEE index must be a non-negative integer.");
+};
 
 export const normalizeProofPayload = (
   value: unknown
@@ -98,16 +122,43 @@ export const isBuyerTeePaymentProofInput = (
   typeof value.encryptedSessionMaterial === "string" &&
   isBuyerTeePaymentParams(value.params);
 
-export const buildBuyerTeeInputParams = (
-  metadata: ExtensionRequestMetadata
+export const buildBuyerTeeVerifyParams = (
+  params: BuyerTeePaymentParams,
+  route: ProofRoute,
+  metadata?: ExtensionRequestMetadata | null
 ): BuyerTeePaymentParams => {
-  if (!isBuyerTeePaymentParams(metadata.params)) {
+  const verifyParams = { ...params };
+
+  if (!BUYER_TEE_INDEX_PARAM_ROUTES.has(buyerTeeRouteKey(route))) {
+    return verifyParams;
+  }
+
+  if (verifyParams.index !== undefined) {
+    return { ...verifyParams, index: normalizeIndexParam(verifyParams.index) };
+  }
+
+  if (!metadata || !Number.isInteger(metadata.originalIndex)) {
+    throw new Error(
+      "Buyer TEE payment index is missing. Select a metadata row or add index manually."
+    );
+  }
+
+  return { ...verifyParams, index: metadata.originalIndex };
+};
+
+export const buildBuyerTeeInputParams = (
+  metadata: ExtensionRequestMetadata,
+  route: ProofRoute
+): BuyerTeePaymentParams => {
+  const extensionParams = metadata.params;
+
+  if (!isBuyerTeePaymentParams(extensionParams)) {
     throw new Error(
       "Buyer TEE params are missing from the selected metadata row. Reload the extension, re-authenticate, and try again."
     );
   }
 
-  return { ...metadata.params };
+  return buildBuyerTeeVerifyParams(extensionParams, route, metadata);
 };
 
 export const parseBuyerTeeVerifyMetadataJson = (

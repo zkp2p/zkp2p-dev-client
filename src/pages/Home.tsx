@@ -26,6 +26,7 @@ import type {
 } from "@helpers/attestation";
 import {
   buildBuyerTeeInputParams,
+  buildBuyerTeeVerifyParams,
   deriveIntentAmountFromMetadata,
   deriveIntentTimestampSecFromMetadata,
   extractBuyerTeeAttestation,
@@ -499,7 +500,8 @@ const Home: React.FC = () => {
         );
       }
 
-      const inputParams = buildBuyerTeeInputParams(meta);
+      const route = resolveProofRoute();
+      const inputParams = buildBuyerTeeInputParams(meta, route);
       const buyerTeeProof: BuyerTeePaymentProofInput = {
         proofType: "buyerTee",
         encryptedSessionMaterial: capture.encryptedSessionMaterial,
@@ -605,13 +607,18 @@ const Home: React.FC = () => {
         const verifyMetadata = parseBuyerTeeVerifyMetadataJson(
           buyerTeeVerifyMetadataJson
         );
+        const verifyParams = buildBuyerTeeVerifyParams(
+          verifyMetadata,
+          route,
+          selectedMetadata
+        );
         const intentMetadata = {
           ...(selectedMetadata ?? {}),
-          ...verifyMetadata,
+          ...verifyParams,
         };
         const payload = {
           encryptedSessionMaterial: proofData.encryptedSessionMaterial,
-          params: verifyMetadata,
+          params: verifyParams,
           chainId,
           intent: buildBuyerTeeIntentDetails(intentMetadata),
         };
