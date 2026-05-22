@@ -61,6 +61,14 @@ type GenericRecord = Record<string, unknown>;
 type ProofEngine = "reclaim" | "buyerTee";
 type BuyerTeePaymentParams = Record<string, string | number | boolean>;
 
+type ProofRoute = {
+  captureActionType: string;
+  capturePlatform: string;
+  metadataGroup: string;
+  verifierActionType: string;
+  verifierPlatform: string;
+};
+
 type BuyerTeePaymentProofInput = {
   proofType: "buyerTee";
   encryptedSessionMaterial: string;
@@ -595,8 +603,17 @@ const Home: React.FC = () => {
     openSidebar("/settings");
   };
 
-  const resolveBuyerTeePlatform = () => paymentPlatform.trim();
-  const resolveVerifyActionType = () => `transfer_${metadataPlatform.trim()}`;
+  const resolveProofRoute = (): ProofRoute => {
+    const metadataGroup = metadataPlatform.trim();
+
+    return {
+      captureActionType: actionType.trim(),
+      capturePlatform: paymentPlatform.trim(),
+      metadataGroup,
+      verifierActionType: `transfer_${metadataGroup}`,
+      verifierPlatform: paymentPlatform.trim(),
+    };
+  };
 
   const resolveVerificationIntentHash = () => {
     const stepFourHash = normalizeHex32(verifyIntentHash);
@@ -641,16 +658,17 @@ const Home: React.FC = () => {
       alert("Please fill out all fields");
       return;
     }
+    const route = resolveProofRoute();
     if (isBuyerTeeEngine) {
       openNewTab(
-        actionType,
-        paymentPlatform,
+        route.captureActionType,
+        route.capturePlatform,
         BUYER_TEE_CAPTURE_MODE,
         attestationBaseUrl.trim() || null,
-        resolveVerifyActionType()
+        route.verifierActionType
       );
     } else {
-      openNewTab(actionType, paymentPlatform);
+      openNewTab(route.captureActionType, route.capturePlatform);
     }
     setSelectedMetadata(null);
     setProofStatus("idle");
@@ -678,10 +696,11 @@ const Home: React.FC = () => {
     }
 
     if (!isBuyerTeeEngine) {
+      const route = resolveProofRoute();
       resetProofState();
       const intentForProof = hexToDecimal(intentHash);
       generatePaymentProof(
-        metadataPlatform,
+        route.metadataGroup,
         intentForProof,
         meta.originalIndex,
         proofIndex
@@ -731,6 +750,7 @@ const Home: React.FC = () => {
     setAttestationResponse(null);
 
     try {
+      const route = resolveProofRoute();
       const proofData = JSON.parse(resultProof);
       if (!isBuyerTeeEngine) {
         const normalizedProofPayload = normalizeProofPayload(proofData);
@@ -764,7 +784,7 @@ const Home: React.FC = () => {
 
         console.log("zkTLS payload:", payload);
 
-        const endpoint = `${attestationBaseUrl.trim()}/verify/${paymentPlatform}/${resolveVerifyActionType()}`;
+        const endpoint = `${attestationBaseUrl.trim()}/verify/${route.verifierPlatform}/${route.verifierActionType}`;
         const response = await fetch(endpoint, {
           method: "POST",
           headers: {
@@ -802,7 +822,6 @@ const Home: React.FC = () => {
       }
 
       if (isBuyerTeePaymentProofInput(proofData)) {
-        const attestationPlatform = resolveBuyerTeePlatform();
         const verifyMetadata = parseBuyerTeeVerifyMetadataJson(
           buyerTeeVerifyMetadataJson
         );
@@ -816,7 +835,7 @@ const Home: React.FC = () => {
           chainId,
           intent: buildBuyerTeeIntentDetails(intentMetadata),
         };
-        const endpoint = `${attestationBaseUrl.trim()}/buyer/verify/${attestationPlatform}/${resolveVerifyActionType()}`;
+        const endpoint = `${attestationBaseUrl.trim()}/buyer/verify/${route.verifierPlatform}/${route.verifierActionType}`;
 
         console.log("Buyer TEE payload:", payload);
 
