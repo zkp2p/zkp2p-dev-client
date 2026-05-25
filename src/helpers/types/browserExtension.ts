@@ -30,6 +30,8 @@ export type ExtensionRequestMetadataMessage = {
     metadata: ExtensionRequestMetadata[];
     platform: string;
     expiresAt: number;
+    errorMessage?: string;
+    buyerTeeCapture?: BuyerTeePaymentCapture | null;
     requestId: string;
   }
 };
@@ -42,7 +44,17 @@ export type ExtensionRequestMetadata = {
   paymentId?: string;
   originalIndex: number;
   hidden: boolean;
+  params?: BuyerTeePaymentParams;
+  [key: string]: unknown;
 };
+
+export type ProofCaptureMode = "sellerCredential" | "buyerTee";
+
+export type BuyerTeePaymentCapture = {
+  encryptedSessionMaterial: string;
+};
+
+export type BuyerTeePaymentParams = Record<string, string | number | boolean>;
 
 export type ExtensionNotaryProofRequest = {
   body: string,
@@ -51,14 +63,14 @@ export type ExtensionNotaryProofRequest = {
   maxTranscriptSize: number,
   method: string,
   notaryUrl: string,
-  proof: any,                 // returned as an object
+  proof: any,
   error: any,
   secretHeaders: string[],
   secretResps: string[],
   status: string,
   url: string,
-  verification: any,          // returned as an object
-  metadata: any,              // different depending on the notarization
+  verification: any,
+  metadata: any,
   websocketProxyUrl: string,
 };
 

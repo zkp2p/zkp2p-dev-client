@@ -14,10 +14,28 @@ import {
 import { Button } from "@components/common/Button";
 import { Input } from "@components/common/Input";
 import useExtensionProxyProofs from "@hooks/contexts/useExtensionProxyProofs";
-import {
+import type {
   ExtensionRequestMetadata,
   ProofGenerationStatusType,
 } from "@helpers/types";
+import type {
+  BuyerTeePaymentProofInput,
+  GenericRecord,
+  ProofEngine,
+  ProofRoute,
+} from "@helpers/attestation";
+import {
+  buildBuyerTeeInputParams,
+  deriveIntentAmountFromMetadata,
+  deriveIntentTimestampSecFromMetadata,
+  extractBuyerTeeAttestation,
+  formatAttestationErrorMessage,
+  getVisibleMetadataEntries,
+  isBuyerTeePaymentProofInput,
+  isRecord,
+  normalizeProofPayload,
+  parseBuyerTeeVerifyMetadataJson,
+} from "@helpers/attestation";
 import chromeSvg from "../assets/images/browsers/chrome.svg";
 import braveSvg from "../assets/images/browsers/brave.svg";
 import { AccessoryButton } from "@components/common/AccessoryButton";
@@ -36,6 +54,9 @@ const CHROME_EXTENSION_URL =
   "https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih";
 const PROOF_FETCH_INTERVAL = 3000;
 const PROOF_GENERATION_TIMEOUT = 60000;
+const BUYER_TEE_CAPTURE_MODE = "buyerTee" as const;
+const BUYER_TEE_TIMESTAMP_BUFFER_MS = "300000";
+const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
 
 // Default calldata inputs stored at module scope (strict, visible defaults)
 const DEFAULT_CALLDATA_INPUTS = {
@@ -47,80 +68,11 @@ const DEFAULT_CALLDATA_INPUTS = {
   conversionRate: "0",
 };
 
-// Helper: derive platform (e.g., "venmo") from action type (e.g., "transfer_venmo").
+// Helper: derive metadata group from action type.
 const derivePlatformFromActionType = (action: string, fallback: string) => {
   if (!action) return fallback;
   const parts = action.split("_");
   return parts.length > 1 ? parts[parts.length - 1] : fallback;
-};
-
-type GenericRecord = Record<string, unknown>;
-
-type NormalizedProofObject = {
-  claim: GenericRecord;
-  signatures: unknown;
-};
-
-const isRecord = (value: unknown): value is GenericRecord =>
-  typeof value === "object" && value !== null;
-
-const normalizeSingleProofObject = (
-  value: unknown
-): NormalizedProofObject | null => {
-  if (!isRecord(value)) return null;
-
-  if (isRecord(value.claim)) {
-    return {
-      claim: value.claim,
-      signatures: value.signatures ?? {},
-    };
-  }
-
-  if (isRecord(value.proof) && isRecord(value.proof.claim)) {
-    return {
-      claim: value.proof.claim,
-      signatures: value.proof.signatures ?? {},
-    };
-  }
-
-  return null;
-};
-
-const normalizeProofPayload = (
-  value: unknown
-): NormalizedProofObject | NormalizedProofObject[] => {
-  const normalizeArray = (items: unknown[]) => {
-    const normalized = items
-      .map((item) => normalizeSingleProofObject(item))
-      .filter((item): item is NormalizedProofObject => item !== null);
-
-    if (!normalized.length || normalized.length !== items.length) {
-      throw new Error(
-        "Invalid proof JSON. Expected a proof object or an array of proof objects."
-      );
-    }
-
-    return normalized;
-  };
-
-  if (Array.isArray(value)) {
-    return normalizeArray(value);
-  }
-
-  const single = normalizeSingleProofObject(value);
-  if (single) return single;
-
-  if (isRecord(value) && Array.isArray(value.proof)) {
-    return normalizeArray(value.proof);
-  }
-
-  if (isRecord(value) && Array.isArray(value.proofs)) {
-    return normalizeArray(value.proofs);
-  }
-
-  throw new Error(
-    "Invalid proof JSON. Expected a proof object or an array of proof objects."
-  );
 };
 
 // Step indicator component
@@ -167,6 +119,10 @@ const Home: React.FC = () => {
   });
   const [actionType, setActionType] = useState(() => {
     return localStorage.getItem("actionType") || "transfer_venmo";
+  });
+  const [proofEngine, setProofEngine] = useState<ProofEngine>(() => {
+    const stored = localStorage.getItem("proofEngine");
+    return stored === "buyerTee" ? "buyerTee" : "reclaim";
   });
   const [paymentPlatform, setPaymentPlatform] = useState(() => {
     return localStorage.getItem("paymentPlatform") || "venmo";
@@ -221,8 +177,6 @@ const Home: React.FC = () => {
   const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
-  // Input changes no longer used (auto-fetched intent); keep for completeness
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [generatedCalldata, setGeneratedCalldata] = useState<string>("");
   const [calldataError, setCalldataError] = useState<string | null>(null);
   // Step 4 independent intent hash for verification
@@ -232,6 +186,8 @@ const Home: React.FC = () => {
   const [fetchIntentError, setFetchIntentError] = useState<string | null>(null);
   const [paymentMethodHex, setPaymentMethodHex] = useState<string>("");
   const [postIntentHookData, setPostIntentHookData] = useState<string>("0x");
+  const [buyerTeeVerifyMetadataJson, setBuyerTeeVerifyMetadataJson] =
+    useState("");
 
   // No localStorage persistence; inputs always reflect actual defaults or user edits
 
@@ -249,6 +205,8 @@ const Home: React.FC = () => {
   } = useExtensionProxyProofs();
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const isBuyerTeeEngine = proofEngine === "buyerTee";
+  const defaultPaymentMethodHex = keccak256(paymentPlatform);
 
   useEffect(() => {
     localStorage.setItem("chainId", chainId.toString());
@@ -280,6 +238,10 @@ const Home: React.FC = () => {
   }, [actionType]);
 
   useEffect(() => {
+    localStorage.setItem("proofEngine", proofEngine);
+  }, [proofEngine]);
+
+  useEffect(() => {
     localStorage.setItem("paymentPlatform", paymentPlatform);
   }, [paymentPlatform]);
 
@@ -298,7 +260,7 @@ const Home: React.FC = () => {
   }, [actionType, paymentPlatform]);
 
   useEffect(() => {
-    if (!paymentProof) return;
+    if (!paymentProof || isBuyerTeeEngine) return;
     if (paymentProof.status === "success") {
       setProofStatus("success");
       setResultProof(JSON.stringify(paymentProof, null, 2));
@@ -311,14 +273,13 @@ const Home: React.FC = () => {
       setResultProof(JSON.stringify(paymentProof, null, 2));
       setTriggerProofFetchPolling(false);
     } else {
-      // keep status "generating"
       setProofStatus("generating");
     }
-  }, [paymentProof, proofGenerationStartTime]);
+  }, [paymentProof, proofGenerationStartTime, isBuyerTeeEngine]);
 
   useEffect(
     () => {
-      if (triggerProofFetchPolling && paymentPlatform) {
+      if (triggerProofFetchPolling && paymentPlatform && !isBuyerTeeEngine) {
         if (intervalId) clearInterval(intervalId);
         const id = setInterval(() => {
           fetchPaymentProof(paymentPlatform);
@@ -338,7 +299,12 @@ const Home: React.FC = () => {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [triggerProofFetchPolling, paymentPlatform, fetchPaymentProof]
+    [
+      triggerProofFetchPolling,
+      paymentPlatform,
+      fetchPaymentProof,
+      isBuyerTeeEngine,
+    ]
   );
 
   useEffect(() => {
@@ -373,8 +339,99 @@ const Home: React.FC = () => {
     setMetadataPlatform(newValue);
   };
 
+  const clearCurrentProof = () => {
+    setSelectedMetadata(null);
+    setProofStatus("idle");
+    setResultProof("");
+    setProofGenerationStartTime(null);
+    setProofGenerationDuration(null);
+    setAttestationResponse(null);
+    setAttestationError(null);
+    setBuyerTeeVerifyMetadataJson("");
+    setTriggerProofFetchPolling(false);
+    if (intervalId) {
+      clearInterval(intervalId);
+      setIntervalId(null);
+    }
+    if (proofTimeoutRef.current) {
+      clearTimeout(proofTimeoutRef.current);
+      proofTimeoutRef.current = null;
+    }
+    resetProofState();
+  };
+
+  const handleProofEngineChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const value = event.target.value === "buyerTee" ? "buyerTee" : "reclaim";
+    setProofEngine(value);
+    clearCurrentProof();
+  };
+
   const handleOpenSettings = () => {
     openSidebar("/settings");
+  };
+
+  const resolvePaymentMethodHex = () =>
+    paymentMethodHex.trim() || defaultPaymentMethodHex;
+
+  const resolveProofRoute = (): ProofRoute => {
+    const captureActionType = actionType.trim();
+    const metadataGroup = metadataPlatform.trim();
+
+    return {
+      captureActionType,
+      capturePlatform: paymentPlatform.trim(),
+      metadataGroup,
+      verifierActionType: isBuyerTeeEngine
+        ? captureActionType
+        : `transfer_${metadataGroup}`,
+      verifierPlatform: paymentPlatform.trim(),
+    };
+  };
+
+  const resolveVerificationIntentHash = () => {
+    const stepFourHash = normalizeHex32(verifyIntentHash);
+    if (stepFourHash !== ZERO_BYTES32) return stepFourHash;
+    return normalizeHex32(intentHash);
+  };
+
+  const buildBuyerTeeIntentDetails = (metadata?: GenericRecord) => {
+    const hex = resolveVerificationIntentHash();
+
+    if (hex === ZERO_BYTES32) {
+      throw new Error(
+        "Enter an intent hash before verifying the buyer TEE proof."
+      );
+    }
+
+    const intentTimestamp =
+      calldataInputs.intentTimestamp !== DEFAULT_CALLDATA_INPUTS.intentTimestamp
+        ? calldataInputs.intentTimestamp
+        : deriveIntentTimestampSecFromMetadata(
+            metadata,
+            DEFAULT_CALLDATA_INPUTS.intentTimestamp
+          );
+    const intentAmount =
+      calldataInputs.intentAmount !== DEFAULT_CALLDATA_INPUTS.intentAmount
+        ? calldataInputs.intentAmount
+        : deriveIntentAmountFromMetadata(
+            metadata,
+            DEFAULT_CALLDATA_INPUTS.intentAmount
+          );
+
+    setVerifyIntentHash(hex);
+
+    return {
+      amount: intentAmount,
+      conversionRate: calldataInputs.conversionRate,
+      fiatCurrency: calldataInputs.fiatCurrency,
+      intentHash: hex,
+      payeeDetails: calldataInputs.payeeDetails,
+      paymentMethod: resolvePaymentMethodHex(),
+      timestampBufferMs: BUYER_TEE_TIMESTAMP_BUFFER_MS,
+      timestampMs: ethers.BigNumber.from(intentTimestamp).mul(1000).toString(),
+    };
   };
 
   const handleAuthenticate = () => {
@@ -382,17 +439,28 @@ const Home: React.FC = () => {
       alert("Please fill out all fields");
       return;
     }
-    openNewTab(actionType, paymentPlatform);
+    const route = resolveProofRoute();
+    if (isBuyerTeeEngine) {
+      openNewTab(
+        route.captureActionType,
+        route.capturePlatform,
+        BUYER_TEE_CAPTURE_MODE,
+        attestationBaseUrl.trim() || null
+      );
+    } else {
+      openNewTab(route.captureActionType, route.capturePlatform);
+    }
     setSelectedMetadata(null);
     setProofStatus("idle");
     setResultProof("");
   };
 
   const handleGenerateProof = (meta: ExtensionRequestMetadata) => {
+    const startedAt = Date.now();
     setSelectedMetadata(meta);
     setProofStatus("generating");
     setResultProof("");
-    setProofGenerationStartTime(Date.now());
+    setProofGenerationStartTime(startedAt);
     setProofGenerationDuration(null);
     setAttestationResponse(null);
     setAttestationError(null);
@@ -407,17 +475,51 @@ const Home: React.FC = () => {
       proofTimeoutRef.current = null;
     }
 
-    resetProofState();
-    // Extension expects decimal intent hash; convert from hex
-    const intentForProof = hexToDecimal(intentHash);
-    generatePaymentProof(
-      metadataPlatform,
-      intentForProof,
-      meta.originalIndex,
-      proofIndex
-    );
+    if (!isBuyerTeeEngine) {
+      const route = resolveProofRoute();
+      resetProofState();
+      const intentForProof = hexToDecimal(intentHash);
+      generatePaymentProof(
+        route.metadataGroup,
+        intentForProof,
+        meta.originalIndex,
+        proofIndex
+      );
+      setTriggerProofFetchPolling(true);
+      return;
+    }
 
-    setTriggerProofFetchPolling(true);
+    try {
+      const metadataInfo = platformMetadata[metadataPlatform];
+      const capture = metadataInfo?.buyerTeeCapture;
+      if (!capture) {
+        throw new Error(
+          metadataInfo?.errorMessage ||
+            "Buyer TEE session capture unavailable. Re-authenticate and try again."
+        );
+      }
+
+      const inputParams = buildBuyerTeeInputParams(meta);
+      const buyerTeeProof: BuyerTeePaymentProofInput = {
+        proofType: "buyerTee",
+        encryptedSessionMaterial: capture.encryptedSessionMaterial,
+        params: inputParams,
+      };
+
+      setResultProof(JSON.stringify(buyerTeeProof, null, 2));
+      setBuyerTeeVerifyMetadataJson(JSON.stringify(inputParams, null, 2));
+      setProofStatus("success");
+      setProofGenerationDuration(Date.now() - startedAt);
+    } catch (error) {
+      console.error("Error preparing buyer TEE proof:", error);
+      setProofStatus("error");
+      setResultProof("");
+      setAttestationError(
+        error instanceof Error
+          ? error.message
+          : "Buyer TEE proof preparation failed."
+      );
+    }
   };
 
   const handleSendToAttestation = async () => {
@@ -428,60 +530,128 @@ const Home: React.FC = () => {
     setAttestationResponse(null);
 
     try {
+      const route = resolveProofRoute();
       const proofData = JSON.parse(resultProof);
-      const normalizedProofPayload = normalizeProofPayload(proofData);
-
-      // Normalize to bytes32 using Step 4 hash
-      const intentHashHex = normalizeHex32(verifyIntentHash);
-      const amount = calldataInputs.intentAmount;
-      const timestampSec = ethers.BigNumber.from(
-        calldataInputs.intentTimestamp || "0"
-      );
-      const timestampMs = timestampSec.mul(1000).toString();
-      const paymentMethod = paymentMethodHex || keccak256(paymentPlatform);
-      const fiatCurrency = calldataInputs.fiatCurrency;
-      const conversionRate = calldataInputs.conversionRate;
-      const payeeDetails = calldataInputs.payeeDetails;
-
-      const payload = {
-        proofType: "reclaim",
-        proof: JSON.stringify(normalizedProofPayload),
-        chainId: chainId,
-        verifyingContract: verifyingContract,
-        intent: {
-          intentHash: intentHashHex,
-          amount,
-          timestampMs,
-          paymentMethod,
-          fiatCurrency,
-          conversionRate,
-          payeeDetails,
-          timestampBufferMs: "10000000",
-        },
-      };
-
-      console.log("Payload:", payload);
-
-      const endpoint = `${attestationBaseUrl}/verify/${paymentPlatform}/transfer_${metadataPlatform}`;
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const responseData = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          responseData.error ||
-            `HTTP error! status: ${response.status} ${responseData.message}`
+      if (!isBuyerTeeEngine) {
+        const normalizedProofPayload = normalizeProofPayload(proofData);
+        const intentHashHex = resolveVerificationIntentHash();
+        const amount = calldataInputs.intentAmount;
+        const timestampSec = ethers.BigNumber.from(
+          calldataInputs.intentTimestamp || "0"
         );
+        const timestampMs = timestampSec.mul(1000).toString();
+        const paymentMethod = resolvePaymentMethodHex();
+        const fiatCurrency = calldataInputs.fiatCurrency;
+        const conversionRate = calldataInputs.conversionRate;
+        const payeeDetails = calldataInputs.payeeDetails;
+
+        const payload = {
+          proofType: "reclaim",
+          proof: JSON.stringify(normalizedProofPayload),
+          chainId,
+          verifyingContract,
+          intent: {
+            intentHash: intentHashHex,
+            amount,
+            timestampMs,
+            paymentMethod,
+            fiatCurrency,
+            conversionRate,
+            payeeDetails,
+            timestampBufferMs: "10000000",
+          },
+        };
+
+        console.log("zkTLS payload:", payload);
+
+        const endpoint = `${attestationBaseUrl.trim()}/verify/${route.verifierPlatform}/${route.verifierActionType}`;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const responseText = await response.text();
+        let responseData: unknown = {};
+        try {
+          responseData = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          responseData = { message: responseText };
+        }
+        const responseRecord = isRecord(responseData) ? responseData : {};
+
+        if (!response.ok) {
+          throw new Error(
+            formatAttestationErrorMessage(
+              responseRecord,
+              responseText,
+              response.status
+            )
+          );
+        }
+
+        setAttestationResponse(JSON.stringify(responseData, null, 2));
+        return;
       }
 
-      setAttestationResponse(JSON.stringify(responseData, null, 2));
+      const buyerTeeAttestation = extractBuyerTeeAttestation(proofData);
+      if (buyerTeeAttestation) {
+        setAttestationResponse(JSON.stringify(buyerTeeAttestation, null, 2));
+        return;
+      }
+
+      if (isBuyerTeePaymentProofInput(proofData)) {
+        const verifyParams = parseBuyerTeeVerifyMetadataJson(
+          buyerTeeVerifyMetadataJson
+        );
+        const intentMetadata = {
+          ...(selectedMetadata ?? {}),
+          ...verifyParams,
+        };
+        const payload = {
+          encryptedSessionMaterial: proofData.encryptedSessionMaterial,
+          params: verifyParams,
+          chainId,
+          intent: buildBuyerTeeIntentDetails(intentMetadata),
+        };
+        const endpoint = `${attestationBaseUrl.trim()}/buyer/verify/${route.verifierPlatform}/${route.verifierActionType}`;
+
+        console.log("Buyer TEE payload:", payload);
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const responseText = await response.text();
+        let responseData: unknown = {};
+        try {
+          responseData = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          responseData = { message: responseText };
+        }
+        const responseRecord = isRecord(responseData) ? responseData : {};
+
+        if (!response.ok) {
+          throw new Error(
+            formatAttestationErrorMessage(
+              responseRecord,
+              responseText,
+              response.status
+            )
+          );
+        }
+
+        setAttestationResponse(JSON.stringify(responseData, null, 2));
+        return;
+      }
+
+      throw new Error(
+        "Expected buyer TEE proof input or buyer TEE attestation JSON."
+      );
     } catch (error) {
       console.error("Error sending to attestation service:", error);
       setAttestationError(
@@ -529,7 +699,7 @@ const Home: React.FC = () => {
         [
           intentHash,
           ethers.BigNumber.from(releaseAmount),
-          dataHash,
+          normalizeHex32(dataHash),
           signatures,
           encodedPaymentDetails,
           metadata,
@@ -538,14 +708,26 @@ const Home: React.FC = () => {
     );
   };
 
-  const resolveVerificationData = (respObj: any) => {
+  const resolveVerificationData = (
+    respObj: any,
+    intentHash: string,
+    paymentProof: string
+  ) => {
     if (respObj?.verificationData) return respObj.verificationData;
+
     const signer =
       respObj?.signer || respObj?.attestorAddress || respObj?.attestor;
     if (!signer) {
-      throw new Error("Attestation response missing verification data");
+      throw new Error("Attestation response missing signer");
     }
-    return ethers.utils.defaultAbiCoder.encode(["address"], [signer]);
+
+    const abi = new ethers.utils.AbiCoder();
+    const signerBytes = abi.encode(["address"], [signer]);
+
+    return abi.encode(
+      ["tuple(bytes32,bytes,bytes)"],
+      [[normalizeHex32(intentHash), paymentProof, signerBytes]]
+    );
   };
 
   // Function to generate fulfillIntent params
@@ -562,21 +744,24 @@ const Home: React.FC = () => {
       const parsedAttestation = JSON.parse(attestationResponse);
       const respObj = parsedAttestation.responseObject ?? parsedAttestation;
       const td = respObj.typedDataValue || respObj.typedData || {};
+      const postIntentHookDataHex = postIntentHookData?.trim()
+        ? postIntentHookData
+        : "0x";
 
       const rawIntentHash = td.intentHash || verifyIntentHash;
       if (!rawIntentHash) {
         throw new Error("Missing intent hash for fulfillIntent params");
       }
       const intentHashHex = normalizeHex32(rawIntentHash);
-
       const paymentProof = encodePaymentAttestation(
         parsedAttestation,
         intentHashHex
       );
-      const verificationData = resolveVerificationData(respObj);
-      const postIntentHookDataHex = postIntentHookData?.trim()
-        ? postIntentHookData
-        : "0x";
+      const verificationData = resolveVerificationData(
+        respObj,
+        intentHashHex,
+        paymentProof
+      );
 
       const fulfillIntentParams = {
         paymentProof,
@@ -608,7 +793,17 @@ const Home: React.FC = () => {
     if (value.trim()) {
       try {
         const parsed = JSON.parse(value);
-        normalizeProofPayload(parsed);
+        if (isBuyerTeeEngine) {
+          if (
+            !extractBuyerTeeAttestation(parsed) &&
+            !isBuyerTeePaymentProofInput(parsed)
+          ) {
+            throw new Error("Not a buyer TEE proof");
+          }
+          setBuyerTeeVerifyMetadataJson("");
+        } else {
+          normalizeProofPayload(parsed);
+        }
         setProofStatus("success");
       } catch {
         // Not valid JSON yet, keep current status
@@ -627,22 +822,35 @@ const Home: React.FC = () => {
       setProofStatus("idle");
       setAttestationResponse(null);
       setAttestationError(null);
+      setBuyerTeeVerifyMetadataJson("");
     }
   };
 
-  // Initialize Step 4 intent hash once from Step 1 on mount
+  // Keep Step 4 aligned until a non-zero override is entered there.
   useEffect(() => {
-    setVerifyIntentHash(intentHash);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setVerifyIntentHash((prev) => {
+      try {
+        if (!prev || normalizeHex32(prev) === ZERO_BYTES32) {
+          return intentHash;
+        }
+      } catch {
+        return intentHash;
+      }
+      return prev;
+    });
+  }, [intentHash]);
 
   const handleFetchIntentFromChain = async () => {
     try {
       setFetchIntentError(null);
       setFetchIntentLoading(true);
       const netChain: 84532 | 8453 = chainId === 8453 ? 8453 : 84532;
-      const hex = normalizeHex32(verifyIntentHash);
+      const hex = resolveVerificationIntentHash();
+      if (hex === ZERO_BYTES32) {
+        throw new Error("Enter the real intent hash before fetching.");
+      }
       const onchain = await fetchIntentDetails(netChain, hex);
+      setVerifyIntentHash(hex);
       setCalldataInputs({
         intentAmount: onchain.amount,
         intentTimestamp: onchain.timestampSec,
@@ -727,22 +935,38 @@ const Home: React.FC = () => {
                 {isAdvancedOpen && (
                   <AdvancedContent id="advanced-settings-panel">
                     <Input
-                      label="Metadata Group (e.g. zelle)"
+                      label="Metadata Group"
                       name="metadataPlatform"
                       value={metadataPlatform}
                       onChange={handleMetadataPlatformChange}
                       valueFontSize="16px"
                     />
-                    <Input
-                      label="Proof Index"
-                      name="proofIndex"
-                      value={proofIndex.toString()}
-                      onChange={(e) => setProofIndex(Number(e.target.value))}
-                      type="number"
-                      step="1"
-                      inputMode="numeric"
-                      valueFontSize="16px"
-                    />
+                    <StyledInputContainer>
+                      <StyledInputLabel htmlFor="proofEngine">
+                        Metadata
+                      </StyledInputLabel>
+                      <StyledSelect
+                        id="proofEngine"
+                        name="proofEngine"
+                        value={proofEngine}
+                        onChange={handleProofEngineChange}
+                      >
+                        <option value="reclaim">zkTLS</option>
+                        <option value="buyerTee">TEE</option>
+                      </StyledSelect>
+                    </StyledInputContainer>
+                    {!isBuyerTeeEngine && (
+                      <Input
+                        label="Proof Index"
+                        name="proofIndex"
+                        value={proofIndex.toString()}
+                        onChange={(e) => setProofIndex(Number(e.target.value))}
+                        type="number"
+                        step="1"
+                        inputMode="numeric"
+                        valueFontSize="16px"
+                      />
+                    )}
                   </AdvancedContent>
                 )}
               </AdvancedSection>
@@ -781,41 +1005,60 @@ const Home: React.FC = () => {
               <StatusItem>
                 <StatusLabel>Available Metadata</StatusLabel>
               </StatusItem>
+              {isBuyerTeeEngine &&
+                platformMetadata[metadataPlatform]?.buyerTeeCapture && (
+                  <ThemedText.BodySmall>
+                    Buyer TEE capture staged (
+                    {platformMetadata[metadataPlatform].metadata?.length ?? 0}{" "}
+                    payments)
+                  </ThemedText.BodySmall>
+                )}
+              {platformMetadata[metadataPlatform]?.errorMessage && (
+                <ThemedText.BodySmall style={{ color: colors.invalidRed }}>
+                  {platformMetadata[metadataPlatform].errorMessage}
+                </ThemedText.BodySmall>
+              )}
               {platformMetadata[metadataPlatform]?.metadata ? (
                 <MetadataList>
-                  {platformMetadata[metadataPlatform].metadata.map((m, idx) => (
-                    <MetadataItem
-                      key={m.originalIndex}
-                      selected={
-                        selectedMetadata?.originalIndex === m.originalIndex
-                      }
-                    >
-                      <MetadataInfo>
-                        <ThemedText.BodySmall>
-                          Amount: {m.amount || "N/A"}
-                        </ThemedText.BodySmall>
-                        <ThemedText.BodySmall>
-                          Date: {m.date || "N/A"}
-                        </ThemedText.BodySmall>
-                        <ThemedText.BodySmall>
-                          Recipient: {m.recipient || "N/A"}
-                        </ThemedText.BodySmall>
-                        <ThemedText.BodySmall>
-                          Index: {m.originalIndex}
-                        </ThemedText.BodySmall>
-                      </MetadataInfo>
-                      <AccessoryButton
-                        onClick={() => handleGenerateProof(m)}
-                        icon="chevronRight"
-                        disabled={
-                          selectedMetadata?.originalIndex === m.originalIndex &&
-                          proofStatus === "generating"
+                  {platformMetadata[metadataPlatform].metadata.map((m) => {
+                    const metadataEntries = getVisibleMetadataEntries(m);
+
+                    return (
+                      <MetadataItem
+                        key={m.originalIndex}
+                        selected={
+                          selectedMetadata?.originalIndex === m.originalIndex
                         }
                       >
-                        Prove
-                      </AccessoryButton>
-                    </MetadataItem>
-                  ))}
+                        <MetadataInfo>
+                          {metadataEntries.length ? (
+                            metadataEntries.map((entry) => (
+                              <ThemedText.BodySmall key={entry.key}>
+                                {entry.key}: {entry.value}
+                              </ThemedText.BodySmall>
+                            ))
+                          ) : (
+                            <ThemedText.BodySmall>
+                              Metadata: N/A
+                            </ThemedText.BodySmall>
+                          )}
+                          <ThemedText.BodySmall>
+                            Index: {m.originalIndex}
+                          </ThemedText.BodySmall>
+                        </MetadataInfo>
+                        <AccessoryButton
+                          onClick={() => handleGenerateProof(m)}
+                          icon="chevronRight"
+                          disabled={
+                            selectedMetadata?.originalIndex ===
+                              m.originalIndex && proofStatus === "generating"
+                          }
+                        >
+                          Prove
+                        </AccessoryButton>
+                      </MetadataItem>
+                    );
+                  })}
                 </MetadataList>
               ) : (
                 <EmptyStateContainer>
@@ -831,24 +1074,38 @@ const Home: React.FC = () => {
             <Section>
               <StepIndicator>
                 <StepNumber>3</StepNumber>
-                <StepLabel>Generate zkTLS Proof</StepLabel>
+                <StepLabel>
+                  {isBuyerTeeEngine
+                    ? "Verify Buyer TEE Payment"
+                    : "Generate zkTLS Proof"}
+                </StepLabel>
               </StepIndicator>
               <StatusItem>
                 <StatusLabel>Proof Status</StatusLabel>
                 <AccessoryButton onClick={handleTogglePasteMode} height={32}>
-                  {isPasteMode ? "Generate Mode" : "Paste Proof"}
+                  {isPasteMode
+                    ? "Generate Mode"
+                    : isBuyerTeeEngine
+                    ? "Paste Attestation"
+                    : "Paste Proof"}
                 </AccessoryButton>
               </StatusItem>
               {isPasteMode ? (
                 <ProofContainer>
                   <ThemedText.BodySecondary>
-                    Paste your proof JSON below:
+                    {isBuyerTeeEngine
+                      ? "Paste your buyer TEE attestation JSON below:"
+                      : "Paste your proof JSON below:"}
                   </ThemedText.BodySecondary>
                   <ProofTextArea
                     value={resultProof}
                     onChange={(e) => handlePastedProofChange(e.target.value)}
                     aria-label="Proof JSON"
-                    placeholder='Paste your proof JSON here…&#10;&#10;Expected formats:&#10;1) { "proof": { "claim": { … }, "signatures": { … } } }&#10;2) [{ "claim": { … }, "signatures": { … } }, { … }]'
+                    placeholder={
+                      isBuyerTeeEngine
+                        ? 'Paste buyer TEE attestation JSON here…\n\nExpected shape:\n{ "signature": "0x…", "signer": "0x…", "encodedPaymentDetails": "0x…", "typedDataValue": { … } }'
+                        : 'Paste your proof JSON here…\n\nExpected formats:\n1) { "proof": { "claim": { … }, "signatures": { … } } }\n2) [{ "claim": { … }, "signatures": { … } }, { … }]'
+                    }
                   />
                   {proofStatus === "success" && (
                     <ThemedText.BodySecondary
@@ -864,9 +1121,13 @@ const Home: React.FC = () => {
                     <SpinnerContainer>
                       <Spinner color={colors.defaultBorderColor} size={40} />
                       <SpinnerMessage>
-                        Generating zero-knowledge proof…
+                        {isBuyerTeeEngine
+                          ? "Verifying payment in buyer TEE…"
+                          : "Generating zero-knowledge proof…"}
                         <br />
-                        This may take up to 30 seconds
+                        {isBuyerTeeEngine
+                          ? "This may take up to 90 seconds"
+                          : "This may take up to 30 seconds"}
                       </SpinnerMessage>
                     </SpinnerContainer>
                   )}
@@ -883,9 +1144,15 @@ const Home: React.FC = () => {
                           }`
                         ) : (
                           <>
-                            Error generating proof:{" "}
+                            {isBuyerTeeEngine
+                              ? "Error preparing proof: "
+                              : "Error generating proof: "}
                             <ErrorMessage>
-                              {paymentProof?.error.message}
+                              {isBuyerTeeEngine
+                                ? attestationError ||
+                                  "Buyer TEE verification failed."
+                                : paymentProof?.error?.message ||
+                                  "Proof generation failed."}
                             </ErrorMessage>
                           </>
                         )}
@@ -918,7 +1185,9 @@ const Home: React.FC = () => {
               <StepIndicator>
                 <StepNumber>4</StepNumber>
                 <StepLabel>
-                  Verify zkTLS Proof & Generate FulfillIntent Params
+                  {isBuyerTeeEngine
+                    ? "Generate FulfillIntent Params"
+                    : "Verify zkTLS Proof & Generate FulfillIntent Params"}
                 </StepLabel>
               </StepIndicator>
 
@@ -1004,6 +1273,24 @@ const Home: React.FC = () => {
                         <option value="8453">Base (8453)</option>
                       </StyledSelect>
                     </StyledInputContainer>
+                    {isBuyerTeeEngine && (
+                      <StyledInputContainer>
+                        <StyledInputLabel htmlFor="buyerTeeVerifyMetadata">
+                          Metadata
+                        </StyledInputLabel>
+                        <MetadataJsonTextArea
+                          id="buyerTeeVerifyMetadata"
+                          name="buyerTeeVerifyMetadata"
+                          value={buyerTeeVerifyMetadataJson}
+                          onChange={(e) =>
+                            setBuyerTeeVerifyMetadataJson(e.target.value)
+                          }
+                          placeholder="{}"
+                          spellCheck="false"
+                          readOnly={attestationLoading}
+                        />
+                      </StyledInputContainer>
+                    )}
                     {/* Verifying Contract moved to Advanced */}
                     <AdvancedSection>
                       <AdvancedHeader
@@ -1108,7 +1395,7 @@ const Home: React.FC = () => {
                                   setPaymentMethodHex(e.target.value)
                                 }
                                 valueFontSize="14px"
-                                placeholder="0x…"
+                                placeholder={defaultPaymentMethodHex}
                               />
                               <Input
                                 label="Verifying Contract"
@@ -1149,7 +1436,7 @@ const Home: React.FC = () => {
                           height={48}
                           width={216}
                         >
-                          Verify Proof
+                          {isBuyerTeeEngine ? "Verify" : "Verify Proof"}
                         </Button>
                         <Button
                           onClick={handleGenerateCalldata}
@@ -1583,6 +1870,31 @@ const ProofTextArea = styled.textarea`
 
   @media (max-width: 768px) {
     min-height: 250px;
+  }
+`;
+
+const MetadataJsonTextArea = styled.textarea`
+  width: 100%;
+  min-height: 120px;
+  padding: 10px;
+  border: 0;
+  border-radius: ${radii.sm}px;
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  box-sizing: border-box;
+  background: transparent;
+  color: ${colors.darkText};
+
+  &:focus {
+    outline: none;
+  }
+
+  &:read-only {
+    opacity: 0.7;
   }
 `;
 

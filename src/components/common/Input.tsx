@@ -100,11 +100,7 @@ export const Input: React.FC<InputProps> = ({
             name={name}
             id={name}
             placeholder={placeholder}
-            value={
-              (value === undefined || value === '') && placeholder
-                ? placeholder
-                : (value ?? '')
-            }
+            value={value ?? ''}
             onChange={onChange}
             onFocus={onFocus}
             onBlur={onBlur}
