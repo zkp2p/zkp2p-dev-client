@@ -16,13 +16,15 @@ import { Input } from "@components/common/Input";
 import useExtensionProxyProofs from "@hooks/contexts/useExtensionProxyProofs";
 import type {
   ExtensionRequestMetadata,
-  ProofGenerationStatusType,
+  SarCredentialCapture,
+  SarCredentialStatus,
 } from "@helpers/types";
+import { ExtensionReceiveMessage } from "@helpers/types";
 import type {
   BuyerTeePaymentProofInput,
   GenericRecord,
-  ProofEngine,
   ProofRoute,
+  SellerCredentialPlatform,
 } from "@helpers/attestation";
 import {
   buildBuyerTeeInputParams,
@@ -33,8 +35,9 @@ import {
   getVisibleMetadataEntries,
   isBuyerTeePaymentProofInput,
   isRecord,
-  normalizeProofPayload,
+  parseEncryptedUploadInput,
   parseBuyerTeeVerifyMetadataJson,
+  SELLER_CREDENTIAL_PLATFORMS,
 } from "@helpers/attestation";
 import chromeSvg from "../assets/images/browsers/chrome.svg";
 import braveSvg from "../assets/images/browsers/brave.svg";
@@ -47,16 +50,17 @@ import {
   getDefaultVerifier,
   fetchIntentDetails,
   normalizeHex32,
-  hexToDecimal,
 } from "@helpers/contracts";
 
 const CHROME_EXTENSION_URL =
   "https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih";
-const PROOF_FETCH_INTERVAL = 3000;
-const PROOF_GENERATION_TIMEOUT = 60000;
 const BUYER_TEE_CAPTURE_MODE = "buyerTee" as const;
+const SAR_CAPTURE_MODE = "sellerCredential" as const;
 const BUYER_TEE_TIMESTAMP_BUFFER_MS = "300000";
+const SAR_CAPTURE_TIMEOUT_MS = 90000;
 const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
+
+type ProofStatus = "idle" | "generating" | "success" | "error";
 
 // Default calldata inputs stored at module scope (strict, visible defaults)
 const DEFAULT_CALLDATA_INPUTS = {
@@ -120,10 +124,6 @@ const Home: React.FC = () => {
   const [actionType, setActionType] = useState(() => {
     return localStorage.getItem("actionType") || "transfer_venmo";
   });
-  const [proofEngine, setProofEngine] = useState<ProofEngine>(() => {
-    const stored = localStorage.getItem("proofEngine");
-    return stored === "buyerTee" ? "buyerTee" : "reclaim";
-  });
   const [paymentPlatform, setPaymentPlatform] = useState(() => {
     return localStorage.getItem("paymentPlatform") || "venmo";
   });
@@ -137,18 +137,13 @@ const Home: React.FC = () => {
       initialPaymentPlatform
     );
   });
-  const [proofIndex, setProofIndex] = useState<number>(0);
   const [isInstallClicked, setIsInstallClicked] = useState(false);
 
   const [selectedMetadata, setSelectedMetadata] =
     useState<ExtensionRequestMetadata | null>(null);
-  const [proofStatus, setProofStatus] =
-    useState<ProofGenerationStatusType>("idle");
+  const [proofStatus, setProofStatus] = useState<ProofStatus>("idle");
   const [resultProof, setResultProof] = useState("");
   const [isPasteMode, setIsPasteMode] = useState(false);
-  const [proofGenerationStartTime, setProofGenerationStartTime] = useState<
-    number | null
-  >(null);
   const [proofGenerationDuration, setProofGenerationDuration] = useState<
     number | null
   >(null);
@@ -170,11 +165,22 @@ const Home: React.FC = () => {
     const stored = localStorage.getItem("attestationBaseUrl");
     return stored || "https://attestation-service.zkp2p.xyz";
   });
-
-  const [triggerProofFetchPolling, setTriggerProofFetchPolling] =
-    useState(false);
-  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
-  const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [sarPlatform, setSarPlatform] = useState<SellerCredentialPlatform>(
+    () => {
+      const stored = localStorage.getItem("sarPlatform");
+      return SELLER_CREDENTIAL_PLATFORMS.includes(
+        stored as SellerCredentialPlatform
+      )
+        ? (stored as SellerCredentialPlatform)
+        : "venmo";
+    }
+  );
+  const [sarEncryptedUpload, setSarEncryptedUpload] = useState("");
+  const [sarResponse, setSarResponse] = useState<string | null>(null);
+  const [sarError, setSarError] = useState<string | null>(null);
+  const [sarLoading, setSarLoading] = useState(false);
+  const [sarCaptureLoading, setSarCaptureLoading] = useState(false);
+  const sarCaptureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
   const [generatedCalldata, setGeneratedCalldata] = useState<string>("");
@@ -198,14 +204,9 @@ const Home: React.FC = () => {
     openNewTab,
     openSidebar,
     platformMetadata,
-    paymentProof,
-    generatePaymentProof,
-    fetchPaymentProof,
-    resetProofState,
   } = useExtensionProxyProofs();
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-  const isBuyerTeeEngine = proofEngine === "buyerTee";
   const defaultPaymentMethodHex = keccak256(paymentPlatform);
 
   useEffect(() => {
@@ -238,12 +239,12 @@ const Home: React.FC = () => {
   }, [actionType]);
 
   useEffect(() => {
-    localStorage.setItem("proofEngine", proofEngine);
-  }, [proofEngine]);
-
-  useEffect(() => {
     localStorage.setItem("paymentPlatform", paymentPlatform);
   }, [paymentPlatform]);
+
+  useEffect(() => {
+    localStorage.setItem("sarPlatform", sarPlatform);
+  }, [sarPlatform]);
 
   // Auto-select verifier by chain (Base Sepolia / Base)
   useEffect(() => {
@@ -260,64 +261,52 @@ const Home: React.FC = () => {
   }, [actionType, paymentPlatform]);
 
   useEffect(() => {
-    if (!paymentProof || isBuyerTeeEngine) return;
-    if (paymentProof.status === "success") {
-      setProofStatus("success");
-      setResultProof(JSON.stringify(paymentProof, null, 2));
-      setTriggerProofFetchPolling(false);
-      if (proofGenerationStartTime) {
-        setProofGenerationDuration(Date.now() - proofGenerationStartTime);
+    const handleSarMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (
+        event.data?.type !== ExtensionReceiveMessage.METADATA_MESSAGES_RESPONSE
+      ) {
+        return;
       }
-    } else if (paymentProof.status === "error") {
-      setProofStatus("error");
-      setResultProof(JSON.stringify(paymentProof, null, 2));
-      setTriggerProofFetchPolling(false);
-    } else {
-      setProofStatus("generating");
-    }
-  }, [paymentProof, proofGenerationStartTime, isBuyerTeeEngine]);
 
-  useEffect(
-    () => {
-      if (triggerProofFetchPolling && paymentPlatform && !isBuyerTeeEngine) {
-        if (intervalId) clearInterval(intervalId);
-        const id = setInterval(() => {
-          fetchPaymentProof(paymentPlatform);
-        }, PROOF_FETCH_INTERVAL);
-        setIntervalId(id);
+      const status = event.data.sarCredentialStatus as
+        | SarCredentialStatus
+        | undefined;
+      const capture = event.data.sarCredentialCapture as
+        | SarCredentialCapture
+        | undefined;
+      if (!status && !capture) return;
 
-        proofTimeoutRef.current = setTimeout(() => {
-          clearInterval(id);
-          setTriggerProofFetchPolling(false);
-          setProofStatus("timeout");
-        }, PROOF_GENERATION_TIMEOUT);
+      const responsePlatform = (
+        status?.platform ??
+        capture?.platform ??
+        event.data.platform
+      )?.toLowerCase();
+      if (responsePlatform !== sarPlatform) return;
 
-        return () => {
-          clearInterval(id);
-          if (proofTimeoutRef.current) clearTimeout(proofTimeoutRef.current);
-        };
+      if (sarCaptureTimeoutRef.current) {
+        clearTimeout(sarCaptureTimeoutRef.current);
+        sarCaptureTimeoutRef.current = null;
       }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      triggerProofFetchPolling,
-      paymentPlatform,
-      fetchPaymentProof,
-      isBuyerTeeEngine,
-    ]
-  );
 
-  useEffect(() => {
-    if (proofStatus !== "generating" && intervalId) {
-      clearInterval(intervalId);
-      setIntervalId(null);
-      setTriggerProofFetchPolling(false);
-      if (proofTimeoutRef.current) {
-        clearTimeout(proofTimeoutRef.current);
-        proofTimeoutRef.current = null;
+      setSarCaptureLoading(false);
+      setSarResponse(JSON.stringify({ capture, status }, null, 2));
+      setSarError(
+        typeof event.data.errorMessage === "string"
+          ? event.data.errorMessage
+          : null
+      );
+    };
+
+    window.addEventListener("message", handleSarMessage);
+    return () => {
+      window.removeEventListener("message", handleSarMessage);
+      if (sarCaptureTimeoutRef.current) {
+        clearTimeout(sarCaptureTimeoutRef.current);
+        sarCaptureTimeoutRef.current = null;
       }
-    }
-  }, [proofStatus, intervalId]);
+    };
+  }, [sarPlatform]);
 
   const handleInstall = () => {
     window.open(CHROME_EXTENSION_URL, "_blank");
@@ -339,35 +328,6 @@ const Home: React.FC = () => {
     setMetadataPlatform(newValue);
   };
 
-  const clearCurrentProof = () => {
-    setSelectedMetadata(null);
-    setProofStatus("idle");
-    setResultProof("");
-    setProofGenerationStartTime(null);
-    setProofGenerationDuration(null);
-    setAttestationResponse(null);
-    setAttestationError(null);
-    setBuyerTeeVerifyMetadataJson("");
-    setTriggerProofFetchPolling(false);
-    if (intervalId) {
-      clearInterval(intervalId);
-      setIntervalId(null);
-    }
-    if (proofTimeoutRef.current) {
-      clearTimeout(proofTimeoutRef.current);
-      proofTimeoutRef.current = null;
-    }
-    resetProofState();
-  };
-
-  const handleProofEngineChange = (
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const value = event.target.value === "buyerTee" ? "buyerTee" : "reclaim";
-    setProofEngine(value);
-    clearCurrentProof();
-  };
-
   const handleOpenSettings = () => {
     openSidebar("/settings");
   };
@@ -383,9 +343,7 @@ const Home: React.FC = () => {
       captureActionType,
       capturePlatform: paymentPlatform.trim(),
       metadataGroup,
-      verifierActionType: isBuyerTeeEngine
-        ? captureActionType
-        : `transfer_${metadataGroup}`,
+      verifierActionType: captureActionType,
       verifierPlatform: paymentPlatform.trim(),
     };
   };
@@ -440,16 +398,12 @@ const Home: React.FC = () => {
       return;
     }
     const route = resolveProofRoute();
-    if (isBuyerTeeEngine) {
-      openNewTab(
-        route.captureActionType,
-        route.capturePlatform,
-        BUYER_TEE_CAPTURE_MODE,
-        attestationBaseUrl.trim() || null
-      );
-    } else {
-      openNewTab(route.captureActionType, route.capturePlatform);
-    }
+    openNewTab(
+      route.captureActionType,
+      route.capturePlatform,
+      BUYER_TEE_CAPTURE_MODE,
+      attestationBaseUrl.trim() || null
+    );
     setSelectedMetadata(null);
     setProofStatus("idle");
     setResultProof("");
@@ -460,34 +414,9 @@ const Home: React.FC = () => {
     setSelectedMetadata(meta);
     setProofStatus("generating");
     setResultProof("");
-    setProofGenerationStartTime(startedAt);
     setProofGenerationDuration(null);
     setAttestationResponse(null);
     setAttestationError(null);
-
-    setTriggerProofFetchPolling(false);
-    if (intervalId) {
-      clearInterval(intervalId);
-      setIntervalId(null);
-    }
-    if (proofTimeoutRef.current) {
-      clearTimeout(proofTimeoutRef.current);
-      proofTimeoutRef.current = null;
-    }
-
-    if (!isBuyerTeeEngine) {
-      const route = resolveProofRoute();
-      resetProofState();
-      const intentForProof = hexToDecimal(intentHash);
-      generatePaymentProof(
-        route.metadataGroup,
-        intentForProof,
-        meta.originalIndex,
-        proofIndex
-      );
-      setTriggerProofFetchPolling(true);
-      return;
-    }
 
     try {
       const metadataInfo = platformMetadata[metadataPlatform];
@@ -532,68 +461,6 @@ const Home: React.FC = () => {
     try {
       const route = resolveProofRoute();
       const proofData = JSON.parse(resultProof);
-      if (!isBuyerTeeEngine) {
-        const normalizedProofPayload = normalizeProofPayload(proofData);
-        const intentHashHex = resolveVerificationIntentHash();
-        const amount = calldataInputs.intentAmount;
-        const timestampSec = ethers.BigNumber.from(
-          calldataInputs.intentTimestamp || "0"
-        );
-        const timestampMs = timestampSec.mul(1000).toString();
-        const paymentMethod = resolvePaymentMethodHex();
-        const fiatCurrency = calldataInputs.fiatCurrency;
-        const conversionRate = calldataInputs.conversionRate;
-        const payeeDetails = calldataInputs.payeeDetails;
-
-        const payload = {
-          proofType: "reclaim",
-          proof: JSON.stringify(normalizedProofPayload),
-          chainId,
-          verifyingContract,
-          intent: {
-            intentHash: intentHashHex,
-            amount,
-            timestampMs,
-            paymentMethod,
-            fiatCurrency,
-            conversionRate,
-            payeeDetails,
-            timestampBufferMs: "10000000",
-          },
-        };
-
-        console.log("zkTLS payload:", payload);
-
-        const endpoint = `${attestationBaseUrl.trim()}/verify/${route.verifierPlatform}/${route.verifierActionType}`;
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        const responseText = await response.text();
-        let responseData: unknown = {};
-        try {
-          responseData = responseText ? JSON.parse(responseText) : {};
-        } catch {
-          responseData = { message: responseText };
-        }
-        const responseRecord = isRecord(responseData) ? responseData : {};
-
-        if (!response.ok) {
-          throw new Error(
-            formatAttestationErrorMessage(
-              responseRecord,
-              responseText,
-              response.status
-            )
-          );
-        }
-
-        setAttestationResponse(JSON.stringify(responseData, null, 2));
-        return;
-      }
 
       const buyerTeeAttestation = extractBuyerTeeAttestation(proofData);
       if (buyerTeeAttestation) {
@@ -615,7 +482,9 @@ const Home: React.FC = () => {
           chainId,
           intent: buildBuyerTeeIntentDetails(intentMetadata),
         };
-        const endpoint = `${attestationBaseUrl.trim()}/buyer/verify/${route.verifierPlatform}/${route.verifierActionType}`;
+        const endpoint = `${attestationBaseUrl.trim()}/buyer/verify/${
+          route.verifierPlatform
+        }/${route.verifierActionType}`;
 
         console.log("Buyer TEE payload:", payload);
 
@@ -789,21 +658,16 @@ const Home: React.FC = () => {
   // Handle pasted proof changes
   const handlePastedProofChange = (value: string) => {
     setResultProof(value);
-    // Try to validate if it's a valid proof JSON
     if (value.trim()) {
       try {
         const parsed = JSON.parse(value);
-        if (isBuyerTeeEngine) {
-          if (
-            !extractBuyerTeeAttestation(parsed) &&
-            !isBuyerTeePaymentProofInput(parsed)
-          ) {
-            throw new Error("Not a buyer TEE proof");
-          }
-          setBuyerTeeVerifyMetadataJson("");
-        } else {
-          normalizeProofPayload(parsed);
+        if (
+          !extractBuyerTeeAttestation(parsed) &&
+          !isBuyerTeePaymentProofInput(parsed)
+        ) {
+          throw new Error("Not a buyer TEE proof");
         }
+        setBuyerTeeVerifyMetadataJson("");
         setProofStatus("success");
       } catch {
         // Not valid JSON yet, keep current status
@@ -864,6 +728,71 @@ const Home: React.FC = () => {
     } finally {
       setFetchIntentLoading(false);
     }
+  };
+
+  const handleSarDirectUpload = async () => {
+    setSarLoading(true);
+    setSarError(null);
+    setSarResponse(null);
+
+    try {
+      const encryptedUpload = parseEncryptedUploadInput(sarEncryptedUpload);
+      const endpoint = `${attestationBaseUrl.trim()}/seller/credentials/${sarPlatform}`;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ encryptedUpload }),
+      });
+      const responseText = await response.text();
+      let responseData: unknown = {};
+      try {
+        responseData = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        responseData = { message: responseText };
+      }
+      const responseRecord = isRecord(responseData) ? responseData : {};
+
+      if (!response.ok) {
+        throw new Error(
+          formatAttestationErrorMessage(
+            responseRecord,
+            responseText,
+            response.status
+          )
+        );
+      }
+
+      setSarResponse(JSON.stringify(responseData, null, 2));
+    } catch (error) {
+      setSarError(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setSarLoading(false);
+    }
+  };
+
+  const handleSarExtensionCapture = () => {
+    setSarCaptureLoading(true);
+    setSarError(null);
+    setSarResponse(null);
+
+    if (sarCaptureTimeoutRef.current) {
+      clearTimeout(sarCaptureTimeoutRef.current);
+    }
+
+    sarCaptureTimeoutRef.current = setTimeout(() => {
+      setSarCaptureLoading(false);
+      setSarError("SAR credential capture timed out.");
+      sarCaptureTimeoutRef.current = null;
+    }, SAR_CAPTURE_TIMEOUT_MS);
+
+    openNewTab(
+      `transfer_${sarPlatform}`,
+      sarPlatform,
+      SAR_CAPTURE_MODE,
+      attestationBaseUrl.trim() || null
+    );
   };
 
   return (
@@ -941,32 +870,6 @@ const Home: React.FC = () => {
                       onChange={handleMetadataPlatformChange}
                       valueFontSize="16px"
                     />
-                    <StyledInputContainer>
-                      <StyledInputLabel htmlFor="proofEngine">
-                        Metadata
-                      </StyledInputLabel>
-                      <StyledSelect
-                        id="proofEngine"
-                        name="proofEngine"
-                        value={proofEngine}
-                        onChange={handleProofEngineChange}
-                      >
-                        <option value="reclaim">zkTLS</option>
-                        <option value="buyerTee">TEE</option>
-                      </StyledSelect>
-                    </StyledInputContainer>
-                    {!isBuyerTeeEngine && (
-                      <Input
-                        label="Proof Index"
-                        name="proofIndex"
-                        value={proofIndex.toString()}
-                        onChange={(e) => setProofIndex(Number(e.target.value))}
-                        type="number"
-                        step="1"
-                        inputMode="numeric"
-                        valueFontSize="16px"
-                      />
-                    )}
                   </AdvancedContent>
                 )}
               </AdvancedSection>
@@ -1005,14 +908,13 @@ const Home: React.FC = () => {
               <StatusItem>
                 <StatusLabel>Available Metadata</StatusLabel>
               </StatusItem>
-              {isBuyerTeeEngine &&
-                platformMetadata[metadataPlatform]?.buyerTeeCapture && (
-                  <ThemedText.BodySmall>
-                    Buyer TEE capture staged (
-                    {platformMetadata[metadataPlatform].metadata?.length ?? 0}{" "}
-                    payments)
-                  </ThemedText.BodySmall>
-                )}
+              {platformMetadata[metadataPlatform]?.buyerTeeCapture && (
+                <ThemedText.BodySmall>
+                  Buyer TEE capture staged (
+                  {platformMetadata[metadataPlatform].metadata?.length ?? 0}{" "}
+                  payments)
+                </ThemedText.BodySmall>
+              )}
               {platformMetadata[metadataPlatform]?.errorMessage && (
                 <ThemedText.BodySmall style={{ color: colors.invalidRed }}>
                   {platformMetadata[metadataPlatform].errorMessage}
@@ -1054,7 +956,7 @@ const Home: React.FC = () => {
                               m.originalIndex && proofStatus === "generating"
                           }
                         >
-                          Prove
+                          Prepare
                         </AccessoryButton>
                       </MetadataItem>
                     );
@@ -1074,44 +976,32 @@ const Home: React.FC = () => {
             <Section>
               <StepIndicator>
                 <StepNumber>3</StepNumber>
-                <StepLabel>
-                  {isBuyerTeeEngine
-                    ? "Verify Buyer TEE Payment"
-                    : "Generate zkTLS Proof"}
-                </StepLabel>
+                <StepLabel>Prepare Buyer TEE Payment</StepLabel>
               </StepIndicator>
               <StatusItem>
-                <StatusLabel>Proof Status</StatusLabel>
+                <StatusLabel>TEE Status</StatusLabel>
                 <AccessoryButton onClick={handleTogglePasteMode} height={32}>
-                  {isPasteMode
-                    ? "Generate Mode"
-                    : isBuyerTeeEngine
-                    ? "Paste Attestation"
-                    : "Paste Proof"}
+                  {isPasteMode ? "Generate Mode" : "Paste Attestation"}
                 </AccessoryButton>
               </StatusItem>
               {isPasteMode ? (
                 <ProofContainer>
                   <ThemedText.BodySecondary>
-                    {isBuyerTeeEngine
-                      ? "Paste your buyer TEE attestation JSON below:"
-                      : "Paste your proof JSON below:"}
+                    Paste your buyer TEE request or attestation JSON below:
                   </ThemedText.BodySecondary>
                   <ProofTextArea
                     value={resultProof}
                     onChange={(e) => handlePastedProofChange(e.target.value)}
                     aria-label="Proof JSON"
                     placeholder={
-                      isBuyerTeeEngine
-                        ? 'Paste buyer TEE attestation JSON here…\n\nExpected shape:\n{ "signature": "0x…", "signer": "0x…", "encodedPaymentDetails": "0x…", "typedDataValue": { … } }'
-                        : 'Paste your proof JSON here…\n\nExpected formats:\n1) { "proof": { "claim": { … }, "signatures": { … } } }\n2) [{ "claim": { … }, "signatures": { … } }, { … }]'
+                      'Paste buyer TEE JSON here…\n\nExpected attestation shape:\n{ "signature": "0x…", "signer": "0x…", "encodedPaymentDetails": "0x…", "typedDataValue": { … } }\n\nOr request shape:\n{ "proofType": "buyerTee", "encryptedSessionMaterial": "…", "params": { … } }'
                     }
                   />
                   {proofStatus === "success" && (
                     <ThemedText.BodySecondary
                       style={{ color: colors.validGreen }}
                     >
-                      Valid proof detected
+                      Valid TEE JSON detected
                     </ThemedText.BodySecondary>
                   )}
                 </ProofContainer>
@@ -1121,13 +1011,10 @@ const Home: React.FC = () => {
                     <SpinnerContainer>
                       <Spinner color={colors.defaultBorderColor} size={40} />
                       <SpinnerMessage>
-                        {isBuyerTeeEngine
-                          ? "Verifying payment in buyer TEE…"
-                          : "Generating zero-knowledge proof…"}
+                        Preparing buyer TEE request…
                         <br />
-                        {isBuyerTeeEngine
-                          ? "This may take up to 90 seconds"
-                          : "This may take up to 30 seconds"}
+                        This should complete as soon as captured metadata is
+                        available
                       </SpinnerMessage>
                     </SpinnerContainer>
                   )}
@@ -1135,7 +1022,7 @@ const Home: React.FC = () => {
                     <>
                       <ThemedText.BodySecondary>
                         {proofStatus === "success" ? (
-                          `Proof generated! ${
+                          `TEE request ready! ${
                             proofGenerationDuration
                               ? `(${(proofGenerationDuration / 1000).toFixed(
                                   1
@@ -1144,15 +1031,10 @@ const Home: React.FC = () => {
                           }`
                         ) : (
                           <>
-                            {isBuyerTeeEngine
-                              ? "Error preparing proof: "
-                              : "Error generating proof: "}
+                            Error preparing proof:{" "}
                             <ErrorMessage>
-                              {isBuyerTeeEngine
-                                ? attestationError ||
-                                  "Buyer TEE verification failed."
-                                : paymentProof?.error?.message ||
-                                  "Proof generation failed."}
+                              {attestationError ||
+                                "Buyer TEE preparation failed."}
                             </ErrorMessage>
                           </>
                         )}
@@ -1164,16 +1046,12 @@ const Home: React.FC = () => {
                       />
                     </>
                   )}
-                  {proofStatus === "timeout" && (
-                    <ThemedText.LabelSmall>
-                      Timeout: no proof received.
-                    </ThemedText.LabelSmall>
-                  )}
                 </ProofContainer>
               ) : (
                 <EmptyStateContainer>
                   <EmptyStateMessage>
-                    Select metadata and generate a proof to see results here
+                    Select metadata and prepare a buyer TEE request to see
+                    results here
                   </EmptyStateMessage>
                 </EmptyStateContainer>
               )}
@@ -1184,11 +1062,7 @@ const Home: React.FC = () => {
             <Section>
               <StepIndicator>
                 <StepNumber>4</StepNumber>
-                <StepLabel>
-                  {isBuyerTeeEngine
-                    ? "Generate FulfillIntent Params"
-                    : "Verify zkTLS Proof & Generate FulfillIntent Params"}
-                </StepLabel>
+                <StepLabel>Generate FulfillIntent Params</StepLabel>
               </StepIndicator>
 
               <VerifyGrid>
@@ -1273,24 +1147,22 @@ const Home: React.FC = () => {
                         <option value="8453">Base (8453)</option>
                       </StyledSelect>
                     </StyledInputContainer>
-                    {isBuyerTeeEngine && (
-                      <StyledInputContainer>
-                        <StyledInputLabel htmlFor="buyerTeeVerifyMetadata">
-                          Metadata
-                        </StyledInputLabel>
-                        <MetadataJsonTextArea
-                          id="buyerTeeVerifyMetadata"
-                          name="buyerTeeVerifyMetadata"
-                          value={buyerTeeVerifyMetadataJson}
-                          onChange={(e) =>
-                            setBuyerTeeVerifyMetadataJson(e.target.value)
-                          }
-                          placeholder="{}"
-                          spellCheck="false"
-                          readOnly={attestationLoading}
-                        />
-                      </StyledInputContainer>
-                    )}
+                    <StyledInputContainer>
+                      <StyledInputLabel htmlFor="buyerTeeVerifyMetadata">
+                        Metadata
+                      </StyledInputLabel>
+                      <MetadataJsonTextArea
+                        id="buyerTeeVerifyMetadata"
+                        name="buyerTeeVerifyMetadata"
+                        value={buyerTeeVerifyMetadataJson}
+                        onChange={(e) =>
+                          setBuyerTeeVerifyMetadataJson(e.target.value)
+                        }
+                        placeholder="{}"
+                        spellCheck="false"
+                        readOnly={attestationLoading}
+                      />
+                    </StyledInputContainer>
                     {/* Verifying Contract moved to Advanced */}
                     <AdvancedSection>
                       <AdvancedHeader
@@ -1436,7 +1308,7 @@ const Home: React.FC = () => {
                           height={48}
                           width={216}
                         >
-                          {isBuyerTeeEngine ? "Verify" : "Verify Proof"}
+                          Verify
                         </Button>
                         <Button
                           onClick={handleGenerateCalldata}
@@ -1494,6 +1366,121 @@ const Home: React.FC = () => {
               </VerifyGrid>
             </Section>
           </VerifyPanel>
+
+          <SarPanel>
+            <Section>
+              <StepIndicator>
+                <StepNumber>5</StepNumber>
+                <StepLabel>SAR Upload</StepLabel>
+              </StepIndicator>
+
+              <VerifyGrid>
+                <AttestationContainer>
+                  <AttestationControls>
+                    <StatusItem>
+                      <StatusLabel>Seller Credential Upload</StatusLabel>
+                    </StatusItem>
+                    <StyledInputContainer>
+                      <StyledInputLabel htmlFor="sarPlatform">
+                        Platform
+                      </StyledInputLabel>
+                      <StyledSelect
+                        id="sarPlatform"
+                        name="sarPlatform"
+                        value={sarPlatform}
+                        onChange={(e) =>
+                          setSarPlatform(
+                            e.target.value as SellerCredentialPlatform
+                          )
+                        }
+                        disabled={sarLoading || sarCaptureLoading}
+                      >
+                        {SELLER_CREDENTIAL_PLATFORMS.map((platform) => (
+                          <option key={platform} value={platform}>
+                            {platform}
+                          </option>
+                        ))}
+                      </StyledSelect>
+                    </StyledInputContainer>
+                    <Input
+                      label="Attestation Service URL"
+                      name="sarAttestationBaseUrl"
+                      value={attestationBaseUrl}
+                      onChange={(e) => setAttestationBaseUrl(e.target.value)}
+                      valueFontSize="14px"
+                      placeholder="https://attestation-service-preprod.zkp2p.xyz"
+                      type="url"
+                      inputMode="url"
+                      readOnly={sarLoading || sarCaptureLoading}
+                    />
+                    <StyledInputContainer>
+                      <StyledInputLabel htmlFor="sarEncryptedUpload">
+                        Encrypted Upload
+                      </StyledInputLabel>
+                      <MetadataJsonTextArea
+                        id="sarEncryptedUpload"
+                        name="sarEncryptedUpload"
+                        value={sarEncryptedUpload}
+                        onChange={(e) => setSarEncryptedUpload(e.target.value)}
+                        placeholder={'{"encryptedUpload":"<compact-jwe>"}'}
+                        spellCheck="false"
+                        readOnly={sarLoading || sarCaptureLoading}
+                      />
+                    </StyledInputContainer>
+                    <ButtonContainer>
+                      <div style={{ display: "flex", gap: 12 }}>
+                        <Button
+                          onClick={handleSarDirectUpload}
+                          disabled={
+                            sarLoading ||
+                            sarCaptureLoading ||
+                            !sarEncryptedUpload.trim()
+                          }
+                          loading={sarLoading}
+                          height={48}
+                          width={216}
+                        >
+                          Upload SAR
+                        </Button>
+                        <Button
+                          onClick={handleSarExtensionCapture}
+                          disabled={
+                            sarLoading ||
+                            sarCaptureLoading ||
+                            !isSidebarInstalled
+                          }
+                          loading={sarCaptureLoading}
+                          height={48}
+                          width={216}
+                        >
+                          Capture SAR
+                        </Button>
+                      </div>
+                    </ButtonContainer>
+                  </AttestationControls>
+                </AttestationContainer>
+                <VerifyRight>
+                  {sarResponse && (
+                    <AttestationResultSection>
+                      <ThemedText.BodySecondary>
+                        SAR Response:
+                      </ThemedText.BodySecondary>
+                      <AttestationResponseArea
+                        readOnly
+                        value={sarResponse}
+                        aria-label="SAR response"
+                      />
+                    </AttestationResultSection>
+                  )}
+                  {sarError && (
+                    <AttestationErrorMessage>
+                      SAR Error: {sarError}
+                    </AttestationErrorMessage>
+                  )}
+                </VerifyRight>
+              </VerifyGrid>
+            </Section>
+          </SarPanel>
         </AppContainer>
       </MainContent>
     </PageWrapper>
@@ -1588,7 +1575,7 @@ const AppContainer = styled.div`
   /* Mobile view - stack vertically */
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
-    grid-template-rows: repeat(4, auto);
+    grid-template-rows: repeat(5, auto);
     height: auto;
     max-height: none;
     border-radius: 0;
@@ -1697,6 +1684,8 @@ const VerifyPanel = styled.div`
     height: auto;
   }
 `;
+
+const SarPanel = styled(VerifyPanel)``;
 
 const Section = styled.div`
   padding: 5px;
