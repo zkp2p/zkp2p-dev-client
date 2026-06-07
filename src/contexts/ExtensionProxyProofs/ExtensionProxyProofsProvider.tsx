@@ -96,6 +96,9 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
 
     if (captureMode) {
       message.captureMode = captureMode;
+    }
+
+    if (attestationServiceUrl) {
       message.attestationServiceUrl = attestationServiceUrl;
     }
 

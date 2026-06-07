@@ -77,6 +77,9 @@ const derivePlatformFromActionType = (action: string, fallback: string) => {
   return parts.length > 1 ? parts[parts.length - 1] : fallback;
 };
 
+const getSellerAutopilotActionType = (platform: string) =>
+  `transfer_${platform.trim().toLowerCase()}`;
+
 const isIdentityActionType = (action: string) =>
   action.trim().startsWith(IDENTITY_ACTION_PREFIX);
 
@@ -349,15 +352,21 @@ const Home: React.FC = () => {
     paymentMethodHex.trim() || defaultPaymentMethodHex;
 
   const resolveProofRoute = (): ProofRoute => {
-    const captureActionType = actionType.trim();
+    const trimmedPaymentPlatform = paymentPlatform.trim();
+    const capturePlatform = isSellerAutopilotFlow
+      ? trimmedPaymentPlatform.toLowerCase()
+      : trimmedPaymentPlatform;
+    const captureActionType = isSellerAutopilotFlow
+      ? getSellerAutopilotActionType(capturePlatform)
+      : actionType.trim();
     const metadataGroup = metadataPlatform.trim();
 
     return {
       captureActionType,
-      capturePlatform: paymentPlatform.trim(),
+      capturePlatform,
       metadataGroup,
       verifierActionType: captureActionType,
-      verifierPlatform: paymentPlatform.trim(),
+      verifierPlatform: capturePlatform,
     };
   };
 
@@ -435,7 +444,10 @@ const Home: React.FC = () => {
   };
 
   const handleAuthenticate = () => {
-    if (!intentHash || !actionType || !paymentPlatform) {
+    if (
+      !paymentPlatform.trim() ||
+      (!isSellerAutopilotFlow && (!intentHash || !actionType))
+    ) {
       alert("Please fill out all fields");
       return;
     }
@@ -471,7 +483,7 @@ const Home: React.FC = () => {
       route.captureActionType,
       route.capturePlatform,
       captureMode,
-      attestationBaseUrl.trim() || null
+      isSellerAutopilotFlow ? undefined : attestationBaseUrl.trim() || null
     );
   };
 
