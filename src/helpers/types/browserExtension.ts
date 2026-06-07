@@ -62,12 +62,9 @@ export type SarCredentialStatus = {
 export const ExtensionPostMessage = {
   OPEN_NEW_TAB: "open_new_tab",
   FETCH_EXTENSION_VERSION: "fetch_extension_version",
-  OPEN_SIDEBAR: "open_sidebar",
-  FETCH_PROVIDER_BASE_URL: "fetch_provider_base_url",
 };
 
 export const ExtensionReceiveMessage = {
   EXTENSION_VERSION_RESPONSE: "extension_version_response",
   METADATA_MESSAGES_RESPONSE: "metadata_messages_response",
-  FETCH_PROVIDER_BASE_URL_RESPONSE: "fetch_provider_base_url_response",
 };

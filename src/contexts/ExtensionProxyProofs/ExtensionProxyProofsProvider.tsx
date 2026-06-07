@@ -111,12 +111,6 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     );
   };
 
-  const openSidebar = (route: string) => {
-    window.postMessage({ type: ExtensionPostMessage.OPEN_SIDEBAR, route }, "*");
-
-    console.log("Posted Message: ", ExtensionPostMessage.OPEN_SIDEBAR, route);
-  };
-
   /*
    * Handlers
    */
@@ -231,7 +225,6 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
         refetchExtensionVersion,
 
         openNewTab,
-        openSidebar,
         platformMetadata,
       }}
     >
