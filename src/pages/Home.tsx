@@ -16,8 +16,8 @@ import { Input } from "@components/common/Input";
 import useExtensionProxyProofs from "@hooks/contexts/useExtensionProxyProofs";
 import type {
   ExtensionRequestMetadata,
+  SarCredentialBundle,
   SarCredentialCapture,
-  SarCredentialStatus,
 } from "@helpers/types";
 import { ExtensionReceiveMessage } from "@helpers/types";
 import type {
@@ -82,6 +82,41 @@ const getSellerAutopilotActionType = (platform: string) =>
 
 const isIdentityActionType = (action: string) =>
   action.trim().startsWith(IDENTITY_ACTION_PREFIX);
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const isHexHash = (value: unknown): value is `0x${string}` =>
+  typeof value === "string" && /^0x[0-9a-fA-F]+$/u.test(value);
+
+const isSarCredentialBundle = (
+  value: unknown
+): value is SarCredentialBundle => {
+  if (!isRecord(value)) return false;
+
+  return (
+    isNonEmptyString(value.bundleSignature) &&
+    (value.credentialExpiresAt === null ||
+      typeof value.credentialExpiresAt === "string") &&
+    isNonEmptyString(value.credentialType) &&
+    isNonEmptyString(value.credentialValidatedAt) &&
+    isNonEmptyString(value.encryptedBlob) &&
+    isNonEmptyString(value.encryptedDataKey) &&
+    isNonEmptyString(value.nonce) &&
+    isHexHash(value.payeeIdHash) &&
+    isNonEmptyString(value.platform)
+  );
+};
+
+const isSarCredentialCapture = (
+  value: unknown
+): value is SarCredentialCapture => {
+  if (!isRecord(value)) return false;
+  return (
+    isSarCredentialBundle(value.credentialBundle) &&
+    isNonEmptyString(value.offchainId)
+  );
+};
 
 // Step indicator component
 const StepIndicator = styled.div`
@@ -170,10 +205,8 @@ const Home: React.FC = () => {
     const stored = localStorage.getItem("attestationBaseUrl");
     return stored || "https://attestation-service.zkp2p.xyz";
   });
-  const [sellerAutopilotResult, setSellerAutopilotResult] = useState<{
-    capture: SarCredentialCapture | null;
-    status: SarCredentialStatus | null;
-  } | null>(null);
+  const [sellerAutopilotResult, setSellerAutopilotResult] =
+    useState<SarCredentialCapture | null>(null);
   const sellerAutopilotTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
@@ -270,18 +303,22 @@ const Home: React.FC = () => {
       }
       if (flowMode !== "sellerAutopilot") return;
 
-      const status = event.data.sarCredentialStatus as
-        | SarCredentialStatus
-        | undefined;
-      const capture = event.data.sarCredentialCapture as
-        | SarCredentialCapture
-        | undefined;
-      if (!status && !capture) return;
+      const rawCapture = event.data.sarCredentialCapture;
+      const capture = isSarCredentialCapture(rawCapture)
+        ? rawCapture
+        : undefined;
+      const captureErrorMessage =
+        rawCapture && !capture
+          ? "Seller Autopilot capture did not return a credential bundle."
+          : null;
+      const errorMessage =
+        typeof event.data.errorMessage === "string"
+          ? event.data.errorMessage
+          : captureErrorMessage;
+      if (!capture && !errorMessage) return;
 
       const responsePlatform = (
-        status?.platform ??
-        capture?.platform ??
-        event.data.platform
+        capture?.credentialBundle.platform ?? event.data.platform
       )?.toLowerCase();
       if (responsePlatform !== paymentPlatform.trim().toLowerCase()) return;
 
@@ -290,16 +327,17 @@ const Home: React.FC = () => {
         sellerAutopilotTimeoutRef.current = null;
       }
 
-      const errorMessage =
-        typeof event.data.errorMessage === "string"
-          ? event.data.errorMessage
-          : null;
-      const result = {
-        capture: capture ?? null,
-        status: status ?? null,
-      };
-      setSellerAutopilotResult(result);
-      setResultProof(JSON.stringify(result, null, 2));
+      setSellerAutopilotResult(capture ?? null);
+      setResultProof(
+        JSON.stringify(
+          {
+            sarCredentialCapture: capture ?? null,
+            ...(errorMessage ? { errorMessage } : {}),
+          },
+          null,
+          2
+        )
+      );
       setProofStatus(errorMessage ? "error" : "success");
       setAttestationError(errorMessage);
     };
@@ -1004,30 +1042,32 @@ const Home: React.FC = () => {
                     <MetadataInfo>
                       <ThemedText.BodySmall>
                         Platform:{" "}
-                        {sellerAutopilotResult.status?.platform ??
-                          sellerAutopilotResult.capture?.platform ??
+                        {sellerAutopilotResult.credentialBundle.platform ??
                           paymentPlatform}
                       </ThemedText.BodySmall>
-                      {sellerAutopilotResult.status?.status && (
+                      <ThemedText.BodySmall>
+                        Offchain ID: {sellerAutopilotResult.offchainId}
+                      </ThemedText.BodySmall>
+                      {sellerAutopilotResult.credentialBundle.platform && (
                         <ThemedText.BodySmall>
-                          Status: {sellerAutopilotResult.status.status}
+                          Bundle Platform:{" "}
+                          {sellerAutopilotResult.credentialBundle.platform}
                         </ThemedText.BodySmall>
                       )}
-                      {sellerAutopilotResult.status?.credentialType && (
+                      {sellerAutopilotResult.credentialBundle
+                        .credentialType && (
                         <ThemedText.BodySmall>
                           Credential Type:{" "}
-                          {sellerAutopilotResult.status.credentialType}
+                          {
+                            sellerAutopilotResult.credentialBundle
+                              .credentialType
+                          }
                         </ThemedText.BodySmall>
                       )}
-                      {sellerAutopilotResult.capture?.payeeId && (
+                      {sellerAutopilotResult.credentialBundle.payeeIdHash && (
                         <ThemedText.BodySmall>
-                          Payee ID: {sellerAutopilotResult.capture.payeeId}
-                        </ThemedText.BodySmall>
-                      )}
-                      {sellerAutopilotResult.capture?.offchainId && (
-                        <ThemedText.BodySmall>
-                          Offchain ID:{" "}
-                          {sellerAutopilotResult.capture.offchainId}
+                          Payee Hash:{" "}
+                          {sellerAutopilotResult.credentialBundle.payeeIdHash}
                         </ThemedText.BodySmall>
                       )}
                     </MetadataInfo>
