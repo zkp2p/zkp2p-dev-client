@@ -9,8 +9,8 @@ export type {
   ProofCaptureMode,
   BuyerTeePaymentCapture,
   BuyerTeePaymentParams,
+  SarCredentialBundle,
   SarCredentialCapture,
-  SarCredentialStatus,
 } from "./browserExtension";
 export {
   ExtensionPostMessage,

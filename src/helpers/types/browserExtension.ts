@@ -18,7 +18,6 @@ export type ExtensionRequestMetadataMessage = {
     errorMessage?: string;
     buyerTeeCapture?: BuyerTeePaymentCapture | null;
     sarCredentialCapture?: SarCredentialCapture | null;
-    sarCredentialStatus?: SarCredentialStatus | null;
     requestId: string;
   };
 };
@@ -43,20 +42,21 @@ export type BuyerTeePaymentCapture = {
 
 export type BuyerTeePaymentParams = Record<string, string | number | boolean>;
 
-export type SarCredentialCapture = {
-  captureId?: string;
-  offchainId?: string;
-  payeeId?: string;
-  platform?: string;
-  [key: string]: unknown;
+export type SarCredentialBundle = {
+  bundleSignature: string;
+  credentialExpiresAt: string | null;
+  credentialType: string;
+  credentialValidatedAt: string;
+  encryptedBlob: string;
+  encryptedDataKey: string;
+  nonce: string;
+  payeeIdHash: `0x${string}`;
+  platform: string;
 };
 
-export type SarCredentialStatus = {
-  credentialType?: string | null;
-  payeeIdHash?: string;
-  platform?: string;
-  status?: string;
-  [key: string]: unknown;
+export type SarCredentialCapture = {
+  credentialBundle: SarCredentialBundle;
+  offchainId: string;
 };
 
 export const ExtensionPostMessage = {

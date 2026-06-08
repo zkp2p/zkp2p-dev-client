@@ -138,7 +138,7 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     console.log("Client received METADATA_MESSAGES_RESPONSE message");
     console.log("event.data", event.data);
 
-    if (event.data.sarCredentialStatus || event.data.sarCredentialCapture) {
+    if (event.data.sarCredentialCapture) {
       return;
     }
 
