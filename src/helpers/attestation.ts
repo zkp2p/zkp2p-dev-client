@@ -4,7 +4,6 @@ import type {
 } from "@helpers/types";
 
 export type GenericRecord = Record<string, unknown>;
-export type ProofEngine = "reclaim" | "buyerTee";
 
 export type ProofRoute = {
   captureActionType: string;
@@ -31,57 +30,25 @@ type BuyerTeePaymentAttestation = {
   };
 };
 
-type NormalizedProofObject = {
-  claim: GenericRecord;
-  signatures: unknown;
-};
-
 type MetadataEntry = {
   key: string;
   value: string;
 };
 
+export const SELLER_CREDENTIAL_PLATFORMS = [
+  "venmo",
+  "cashapp",
+  "wise",
+  "paypal",
+] as const;
+
+export type SellerCredentialPlatform =
+  (typeof SELLER_CREDENTIAL_PLATFORMS)[number];
+
 const HIDDEN_METADATA_KEYS = new Set(["hidden", "originalIndex", "params"]);
 
 export const isRecord = (value: unknown): value is GenericRecord =>
   typeof value === "object" && value !== null;
-
-export const normalizeProofPayload = (
-  value: unknown
-): NormalizedProofObject | NormalizedProofObject[] => {
-  const normalizeArray = (items: unknown[]) => {
-    const normalized = items
-      .map((item) => normalizeSingleProofObject(item))
-      .filter((item): item is NormalizedProofObject => item !== null);
-
-    if (!normalized.length || normalized.length !== items.length) {
-      throw new Error(
-        "Invalid proof JSON. Expected a proof object or an array of proof objects."
-      );
-    }
-
-    return normalized;
-  };
-
-  if (Array.isArray(value)) {
-    return normalizeArray(value);
-  }
-
-  const single = normalizeSingleProofObject(value);
-  if (single) return single;
-
-  if (isRecord(value) && Array.isArray(value.proof)) {
-    return normalizeArray(value.proof);
-  }
-
-  if (isRecord(value) && Array.isArray(value.proofs)) {
-    return normalizeArray(value.proofs);
-  }
-
-  throw new Error(
-    "Invalid proof JSON. Expected a proof object or an array of proof objects."
-  );
-};
 
 export const extractBuyerTeeAttestation = (
   value: unknown
@@ -160,6 +127,28 @@ export const formatAttestationErrorMessage = (
   return validationErrors ? `${message}: ${validationErrors}` : message;
 };
 
+export const parseEncryptedUploadInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("Enter a compact JWE or JSON object with encryptedUpload.");
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (isRecord(parsed) && typeof parsed.encryptedUpload === "string") {
+      const encryptedUpload = parsed.encryptedUpload.trim();
+      if (encryptedUpload) return encryptedUpload;
+    }
+
+    throw new Error("JSON input must include a non-empty encryptedUpload.");
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return trimmed;
+    }
+    throw error;
+  }
+};
+
 export const deriveIntentAmountFromMetadata = (
   metadata: GenericRecord | undefined,
   fallback: string
@@ -215,28 +204,6 @@ export const getVisibleMetadataEntries = (
       value: formatMetadataValue(value),
     }))
     .filter(({ value }) => value.length > 0);
-
-const normalizeSingleProofObject = (
-  value: unknown
-): NormalizedProofObject | null => {
-  if (!isRecord(value)) return null;
-
-  if (isRecord(value.claim)) {
-    return {
-      claim: value.claim,
-      signatures: value.signatures ?? {},
-    };
-  }
-
-  if (isRecord(value.proof) && isRecord(value.proof.claim)) {
-    return {
-      claim: value.proof.claim,
-      signatures: value.proof.signatures ?? {},
-    };
-  }
-
-  return null;
-};
 
 const isBuyerTeePaymentAttestation = (
   value: unknown

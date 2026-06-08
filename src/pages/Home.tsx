@@ -16,12 +16,13 @@ import { Input } from "@components/common/Input";
 import useExtensionProxyProofs from "@hooks/contexts/useExtensionProxyProofs";
 import type {
   ExtensionRequestMetadata,
-  ProofGenerationStatusType,
+  SarCredentialCapture,
+  SarCredentialStatus,
 } from "@helpers/types";
+import { ExtensionReceiveMessage } from "@helpers/types";
 import type {
   BuyerTeePaymentProofInput,
   GenericRecord,
-  ProofEngine,
   ProofRoute,
 } from "@helpers/attestation";
 import {
@@ -33,7 +34,6 @@ import {
   getVisibleMetadataEntries,
   isBuyerTeePaymentProofInput,
   isRecord,
-  normalizeProofPayload,
   parseBuyerTeeVerifyMetadataJson,
 } from "@helpers/attestation";
 import chromeSvg from "../assets/images/browsers/chrome.svg";
@@ -47,16 +47,18 @@ import {
   getDefaultVerifier,
   fetchIntentDetails,
   normalizeHex32,
-  hexToDecimal,
 } from "@helpers/contracts";
 
 const CHROME_EXTENSION_URL =
   "https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih";
-const PROOF_FETCH_INTERVAL = 3000;
-const PROOF_GENERATION_TIMEOUT = 60000;
 const BUYER_TEE_CAPTURE_MODE = "buyerTee" as const;
-const BUYER_TEE_TIMESTAMP_BUFFER_MS = "300000";
+const SELLER_AUTOPILOT_CAPTURE_MODE = "sellerCredential" as const;
+const SELLER_AUTOPILOT_CAPTURE_TIMEOUT_MS = 90000;
 const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
+const IDENTITY_ACTION_PREFIX = "register_";
+
+type ProofStatus = "idle" | "generating" | "success" | "error";
+type FlowMode = "buyer" | "sellerAutopilot";
 
 // Default calldata inputs stored at module scope (strict, visible defaults)
 const DEFAULT_CALLDATA_INPUTS = {
@@ -74,6 +76,12 @@ const derivePlatformFromActionType = (action: string, fallback: string) => {
   const parts = action.split("_");
   return parts.length > 1 ? parts[parts.length - 1] : fallback;
 };
+
+const getSellerAutopilotActionType = (platform: string) =>
+  `transfer_${platform.trim().toLowerCase()}`;
+
+const isIdentityActionType = (action: string) =>
+  action.trim().startsWith(IDENTITY_ACTION_PREFIX);
 
 // Step indicator component
 const StepIndicator = styled.div`
@@ -120,13 +128,10 @@ const Home: React.FC = () => {
   const [actionType, setActionType] = useState(() => {
     return localStorage.getItem("actionType") || "transfer_venmo";
   });
-  const [proofEngine, setProofEngine] = useState<ProofEngine>(() => {
-    const stored = localStorage.getItem("proofEngine");
-    return stored === "buyerTee" ? "buyerTee" : "reclaim";
-  });
   const [paymentPlatform, setPaymentPlatform] = useState(() => {
     return localStorage.getItem("paymentPlatform") || "venmo";
   });
+  const [flowMode, setFlowMode] = useState<FlowMode>("buyer");
   const [metadataPlatform, setMetadataPlatform] = useState(() => {
     const initialPaymentPlatform =
       localStorage.getItem("paymentPlatform") || "venmo";
@@ -137,18 +142,13 @@ const Home: React.FC = () => {
       initialPaymentPlatform
     );
   });
-  const [proofIndex, setProofIndex] = useState<number>(0);
   const [isInstallClicked, setIsInstallClicked] = useState(false);
 
   const [selectedMetadata, setSelectedMetadata] =
     useState<ExtensionRequestMetadata | null>(null);
-  const [proofStatus, setProofStatus] =
-    useState<ProofGenerationStatusType>("idle");
+  const [proofStatus, setProofStatus] = useState<ProofStatus>("idle");
   const [resultProof, setResultProof] = useState("");
   const [isPasteMode, setIsPasteMode] = useState(false);
-  const [proofGenerationStartTime, setProofGenerationStartTime] = useState<
-    number | null
-  >(null);
   const [proofGenerationDuration, setProofGenerationDuration] = useState<
     number | null
   >(null);
@@ -170,11 +170,11 @@ const Home: React.FC = () => {
     const stored = localStorage.getItem("attestationBaseUrl");
     return stored || "https://attestation-service.zkp2p.xyz";
   });
-
-  const [triggerProofFetchPolling, setTriggerProofFetchPolling] =
-    useState(false);
-  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
-  const proofTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [sellerAutopilotResult, setSellerAutopilotResult] = useState<{
+    capture: SarCredentialCapture | null;
+    status: SarCredentialStatus | null;
+  } | null>(null);
+  const sellerAutopilotTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
   const [generatedCalldata, setGeneratedCalldata] = useState<string>("");
@@ -196,17 +196,22 @@ const Home: React.FC = () => {
     sideBarVersion,
     refetchExtensionVersion,
     openNewTab,
-    openSidebar,
     platformMetadata,
-    paymentProof,
-    generatePaymentProof,
-    fetchPaymentProof,
-    resetProofState,
   } = useExtensionProxyProofs();
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-  const isBuyerTeeEngine = proofEngine === "buyerTee";
   const defaultPaymentMethodHex = keccak256(paymentPlatform);
+  const isBuyerFlow = flowMode === "buyer";
+  const isSellerAutopilotFlow = flowMode === "sellerAutopilot";
+  const isIdentityFlow = isBuyerFlow && isIdentityActionType(actionType);
+  const isBuyerPaymentFlow = isBuyerFlow && !isIdentityFlow;
+  const submitButtonLabel = isIdentityFlow ? "Submit Identity" : "Submit Buyer";
+  const attestationResponseLabel = isIdentityFlow
+    ? "Identity Response:"
+    : "Attestation Response:";
+  const stepFourLabel = isIdentityFlow
+    ? "Submit Identity"
+    : "Generate FulfillIntent Params";
 
   useEffect(() => {
     localStorage.setItem("chainId", chainId.toString());
@@ -238,10 +243,6 @@ const Home: React.FC = () => {
   }, [actionType]);
 
   useEffect(() => {
-    localStorage.setItem("proofEngine", proofEngine);
-  }, [proofEngine]);
-
-  useEffect(() => {
     localStorage.setItem("paymentPlatform", paymentPlatform);
   }, [paymentPlatform]);
 
@@ -260,64 +261,58 @@ const Home: React.FC = () => {
   }, [actionType, paymentPlatform]);
 
   useEffect(() => {
-    if (!paymentProof || isBuyerTeeEngine) return;
-    if (paymentProof.status === "success") {
-      setProofStatus("success");
-      setResultProof(JSON.stringify(paymentProof, null, 2));
-      setTriggerProofFetchPolling(false);
-      if (proofGenerationStartTime) {
-        setProofGenerationDuration(Date.now() - proofGenerationStartTime);
+    const handleSellerAutopilotMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (
+        event.data?.type !== ExtensionReceiveMessage.METADATA_MESSAGES_RESPONSE
+      ) {
+        return;
       }
-    } else if (paymentProof.status === "error") {
-      setProofStatus("error");
-      setResultProof(JSON.stringify(paymentProof, null, 2));
-      setTriggerProofFetchPolling(false);
-    } else {
-      setProofStatus("generating");
-    }
-  }, [paymentProof, proofGenerationStartTime, isBuyerTeeEngine]);
+      if (flowMode !== "sellerAutopilot") return;
 
-  useEffect(
-    () => {
-      if (triggerProofFetchPolling && paymentPlatform && !isBuyerTeeEngine) {
-        if (intervalId) clearInterval(intervalId);
-        const id = setInterval(() => {
-          fetchPaymentProof(paymentPlatform);
-        }, PROOF_FETCH_INTERVAL);
-        setIntervalId(id);
+      const status = event.data.sarCredentialStatus as
+        | SarCredentialStatus
+        | undefined;
+      const capture = event.data.sarCredentialCapture as
+        | SarCredentialCapture
+        | undefined;
+      if (!status && !capture) return;
 
-        proofTimeoutRef.current = setTimeout(() => {
-          clearInterval(id);
-          setTriggerProofFetchPolling(false);
-          setProofStatus("timeout");
-        }, PROOF_GENERATION_TIMEOUT);
+      const responsePlatform = (
+        status?.platform ??
+        capture?.platform ??
+        event.data.platform
+      )?.toLowerCase();
+      if (responsePlatform !== paymentPlatform.trim().toLowerCase()) return;
 
-        return () => {
-          clearInterval(id);
-          if (proofTimeoutRef.current) clearTimeout(proofTimeoutRef.current);
-        };
+      if (sellerAutopilotTimeoutRef.current) {
+        clearTimeout(sellerAutopilotTimeoutRef.current);
+        sellerAutopilotTimeoutRef.current = null;
       }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      triggerProofFetchPolling,
-      paymentPlatform,
-      fetchPaymentProof,
-      isBuyerTeeEngine,
-    ]
-  );
 
-  useEffect(() => {
-    if (proofStatus !== "generating" && intervalId) {
-      clearInterval(intervalId);
-      setIntervalId(null);
-      setTriggerProofFetchPolling(false);
-      if (proofTimeoutRef.current) {
-        clearTimeout(proofTimeoutRef.current);
-        proofTimeoutRef.current = null;
+      const errorMessage =
+        typeof event.data.errorMessage === "string"
+          ? event.data.errorMessage
+          : null;
+      const result = {
+        capture: capture ?? null,
+        status: status ?? null,
+      };
+      setSellerAutopilotResult(result);
+      setResultProof(JSON.stringify(result, null, 2));
+      setProofStatus(errorMessage ? "error" : "success");
+      setAttestationError(errorMessage);
+    };
+
+    window.addEventListener("message", handleSellerAutopilotMessage);
+    return () => {
+      window.removeEventListener("message", handleSellerAutopilotMessage);
+      if (sellerAutopilotTimeoutRef.current) {
+        clearTimeout(sellerAutopilotTimeoutRef.current);
+        sellerAutopilotTimeoutRef.current = null;
       }
-    }
-  }, [proofStatus, intervalId]);
+    };
+  }, [flowMode, paymentPlatform]);
 
   const handleInstall = () => {
     window.open(CHROME_EXTENSION_URL, "_blank");
@@ -339,54 +334,39 @@ const Home: React.FC = () => {
     setMetadataPlatform(newValue);
   };
 
-  const clearCurrentProof = () => {
+  const handleFlowModeChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    setFlowMode(event.target.value as FlowMode);
     setSelectedMetadata(null);
     setProofStatus("idle");
     setResultProof("");
-    setProofGenerationStartTime(null);
-    setProofGenerationDuration(null);
     setAttestationResponse(null);
     setAttestationError(null);
+    setSellerAutopilotResult(null);
     setBuyerTeeVerifyMetadataJson("");
-    setTriggerProofFetchPolling(false);
-    if (intervalId) {
-      clearInterval(intervalId);
-      setIntervalId(null);
-    }
-    if (proofTimeoutRef.current) {
-      clearTimeout(proofTimeoutRef.current);
-      proofTimeoutRef.current = null;
-    }
-    resetProofState();
-  };
-
-  const handleProofEngineChange = (
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const value = event.target.value === "buyerTee" ? "buyerTee" : "reclaim";
-    setProofEngine(value);
-    clearCurrentProof();
-  };
-
-  const handleOpenSettings = () => {
-    openSidebar("/settings");
+    setIsPasteMode(false);
   };
 
   const resolvePaymentMethodHex = () =>
     paymentMethodHex.trim() || defaultPaymentMethodHex;
 
   const resolveProofRoute = (): ProofRoute => {
-    const captureActionType = actionType.trim();
+    const trimmedPaymentPlatform = paymentPlatform.trim();
+    const capturePlatform = isSellerAutopilotFlow
+      ? trimmedPaymentPlatform.toLowerCase()
+      : trimmedPaymentPlatform;
+    const captureActionType = isSellerAutopilotFlow
+      ? getSellerAutopilotActionType(capturePlatform)
+      : actionType.trim();
     const metadataGroup = metadataPlatform.trim();
 
     return {
       captureActionType,
-      capturePlatform: paymentPlatform.trim(),
+      capturePlatform,
       metadataGroup,
-      verifierActionType: isBuyerTeeEngine
-        ? captureActionType
-        : `transfer_${metadataGroup}`,
-      verifierPlatform: paymentPlatform.trim(),
+      verifierActionType: captureActionType,
+      verifierPlatform: capturePlatform,
     };
   };
 
@@ -429,65 +409,94 @@ const Home: React.FC = () => {
       intentHash: hex,
       payeeDetails: calldataInputs.payeeDetails,
       paymentMethod: resolvePaymentMethodHex(),
-      timestampBufferMs: BUYER_TEE_TIMESTAMP_BUFFER_MS,
       timestampMs: ethers.BigNumber.from(intentTimestamp).mul(1000).toString(),
     };
   };
 
+  const postAttestationJson = async (endpoint: string, payload: unknown) => {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const responseText = await response.text();
+    let responseData: unknown = {};
+    try {
+      responseData = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      responseData = { message: responseText };
+    }
+    const responseRecord = isRecord(responseData) ? responseData : {};
+
+    if (!response.ok) {
+      throw new Error(
+        formatAttestationErrorMessage(
+          responseRecord,
+          responseText,
+          response.status
+        )
+      );
+    }
+
+    return responseData;
+  };
+
   const handleAuthenticate = () => {
-    if (!intentHash || !actionType || !paymentPlatform) {
+    if (
+      !paymentPlatform.trim() ||
+      (!isSellerAutopilotFlow && (!intentHash || !actionType))
+    ) {
       alert("Please fill out all fields");
       return;
     }
     const route = resolveProofRoute();
-    if (isBuyerTeeEngine) {
-      openNewTab(
-        route.captureActionType,
-        route.capturePlatform,
-        BUYER_TEE_CAPTURE_MODE,
-        attestationBaseUrl.trim() || null
-      );
-    } else {
-      openNewTab(route.captureActionType, route.capturePlatform);
+    const captureMode = isSellerAutopilotFlow
+      ? SELLER_AUTOPILOT_CAPTURE_MODE
+      : BUYER_TEE_CAPTURE_MODE;
+
+    if (sellerAutopilotTimeoutRef.current) {
+      clearTimeout(sellerAutopilotTimeoutRef.current);
+      sellerAutopilotTimeoutRef.current = null;
     }
+
     setSelectedMetadata(null);
-    setProofStatus("idle");
+    setProofStatus(isSellerAutopilotFlow ? "generating" : "idle");
     setResultProof("");
+    setProofGenerationDuration(null);
+    setAttestationResponse(null);
+    setAttestationError(null);
+    setSellerAutopilotResult(null);
+    setBuyerTeeVerifyMetadataJson("");
+    setIsPasteMode(false);
+
+    if (isSellerAutopilotFlow) {
+      sellerAutopilotTimeoutRef.current = setTimeout(() => {
+        setProofStatus("error");
+        setAttestationError("Seller Autopilot capture timed out.");
+        sellerAutopilotTimeoutRef.current = null;
+      }, SELLER_AUTOPILOT_CAPTURE_TIMEOUT_MS);
+    }
+
+    openNewTab(
+      route.captureActionType,
+      route.capturePlatform,
+      captureMode,
+      isSellerAutopilotFlow ? undefined : attestationBaseUrl.trim() || null
+    );
   };
 
   const handleGenerateProof = (meta: ExtensionRequestMetadata) => {
+    if (!isBuyerFlow) return;
+
     const startedAt = Date.now();
     setSelectedMetadata(meta);
     setProofStatus("generating");
     setResultProof("");
-    setProofGenerationStartTime(startedAt);
     setProofGenerationDuration(null);
     setAttestationResponse(null);
     setAttestationError(null);
-
-    setTriggerProofFetchPolling(false);
-    if (intervalId) {
-      clearInterval(intervalId);
-      setIntervalId(null);
-    }
-    if (proofTimeoutRef.current) {
-      clearTimeout(proofTimeoutRef.current);
-      proofTimeoutRef.current = null;
-    }
-
-    if (!isBuyerTeeEngine) {
-      const route = resolveProofRoute();
-      resetProofState();
-      const intentForProof = hexToDecimal(intentHash);
-      generatePaymentProof(
-        route.metadataGroup,
-        intentForProof,
-        meta.originalIndex,
-        proofIndex
-      );
-      setTriggerProofFetchPolling(true);
-      return;
-    }
 
     try {
       const metadataInfo = platformMetadata[metadataPlatform];
@@ -523,7 +532,7 @@ const Home: React.FC = () => {
   };
 
   const handleSendToAttestation = async () => {
-    if (!resultProof) return;
+    if (!isBuyerFlow || !resultProof) return;
 
     setAttestationLoading(true);
     setAttestationError(null);
@@ -531,66 +540,28 @@ const Home: React.FC = () => {
 
     try {
       const route = resolveProofRoute();
+      const baseUrl = attestationBaseUrl.trim();
+
       const proofData = JSON.parse(resultProof);
-      if (!isBuyerTeeEngine) {
-        const normalizedProofPayload = normalizeProofPayload(proofData);
-        const intentHashHex = resolveVerificationIntentHash();
-        const amount = calldataInputs.intentAmount;
-        const timestampSec = ethers.BigNumber.from(
-          calldataInputs.intentTimestamp || "0"
+
+      if (isIdentityFlow) {
+        if (!isBuyerTeePaymentProofInput(proofData)) {
+          throw new Error("Expected identity TEE request JSON.");
+        }
+        const verifyParams = parseBuyerTeeVerifyMetadataJson(
+          buyerTeeVerifyMetadataJson
         );
-        const timestampMs = timestampSec.mul(1000).toString();
-        const paymentMethod = resolvePaymentMethodHex();
-        const fiatCurrency = calldataInputs.fiatCurrency;
-        const conversionRate = calldataInputs.conversionRate;
-        const payeeDetails = calldataInputs.payeeDetails;
-
         const payload = {
-          proofType: "reclaim",
-          proof: JSON.stringify(normalizedProofPayload),
-          chainId,
-          verifyingContract,
-          intent: {
-            intentHash: intentHashHex,
-            amount,
-            timestampMs,
-            paymentMethod,
-            fiatCurrency,
-            conversionRate,
-            payeeDetails,
-            timestampBufferMs: "10000000",
-          },
+          platform: route.verifierPlatform,
+          actionType: route.verifierActionType,
+          encryptedSessionMaterial: proofData.encryptedSessionMaterial,
+          params: verifyParams,
         };
+        const endpoint = `${baseUrl}/identity`;
 
-        console.log("zkTLS payload:", payload);
+        console.log("Identity payload:", payload);
 
-        const endpoint = `${attestationBaseUrl.trim()}/verify/${route.verifierPlatform}/${route.verifierActionType}`;
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        const responseText = await response.text();
-        let responseData: unknown = {};
-        try {
-          responseData = responseText ? JSON.parse(responseText) : {};
-        } catch {
-          responseData = { message: responseText };
-        }
-        const responseRecord = isRecord(responseData) ? responseData : {};
-
-        if (!response.ok) {
-          throw new Error(
-            formatAttestationErrorMessage(
-              responseRecord,
-              responseText,
-              response.status
-            )
-          );
-        }
-
+        const responseData = await postAttestationJson(endpoint, payload);
         setAttestationResponse(JSON.stringify(responseData, null, 2));
         return;
       }
@@ -615,36 +586,11 @@ const Home: React.FC = () => {
           chainId,
           intent: buildBuyerTeeIntentDetails(intentMetadata),
         };
-        const endpoint = `${attestationBaseUrl.trim()}/buyer/verify/${route.verifierPlatform}/${route.verifierActionType}`;
+        const endpoint = `${baseUrl}/buyer/verify/${route.verifierPlatform}/${route.verifierActionType}`;
 
         console.log("Buyer TEE payload:", payload);
 
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        const responseText = await response.text();
-        let responseData: unknown = {};
-        try {
-          responseData = responseText ? JSON.parse(responseText) : {};
-        } catch {
-          responseData = { message: responseText };
-        }
-        const responseRecord = isRecord(responseData) ? responseData : {};
-
-        if (!response.ok) {
-          throw new Error(
-            formatAttestationErrorMessage(
-              responseRecord,
-              responseText,
-              response.status
-            )
-          );
-        }
-
+        const responseData = await postAttestationJson(endpoint, payload);
         setAttestationResponse(JSON.stringify(responseData, null, 2));
         return;
       }
@@ -789,21 +735,16 @@ const Home: React.FC = () => {
   // Handle pasted proof changes
   const handlePastedProofChange = (value: string) => {
     setResultProof(value);
-    // Try to validate if it's a valid proof JSON
     if (value.trim()) {
       try {
         const parsed = JSON.parse(value);
-        if (isBuyerTeeEngine) {
-          if (
-            !extractBuyerTeeAttestation(parsed) &&
-            !isBuyerTeePaymentProofInput(parsed)
-          ) {
-            throw new Error("Not a buyer TEE proof");
-          }
-          setBuyerTeeVerifyMetadataJson("");
-        } else {
-          normalizeProofPayload(parsed);
+        if (
+          !extractBuyerTeeAttestation(parsed) &&
+          !isBuyerTeePaymentProofInput(parsed)
+        ) {
+          throw new Error("Not a buyer TEE proof");
         }
+        setBuyerTeeVerifyMetadataJson("");
         setProofStatus("success");
       } catch {
         // Not valid JSON yet, keep current status
@@ -881,14 +822,6 @@ const Home: React.FC = () => {
                 <StatusValue>
                   {isSidebarInstalled ? sideBarVersion : "Not Installed"}
                 </StatusValue>
-                <IconButton
-                  onClick={handleOpenSettings}
-                  disabled={proofStatus === "generating"}
-                  title="Open Settings"
-                >
-                  Open Settings
-                  <StyledChevronRight />
-                </IconButton>
               </StatusItem>
               <Input
                 label="Intent Hash"
@@ -934,6 +867,22 @@ const Home: React.FC = () => {
                 </AdvancedHeader>
                 {isAdvancedOpen && (
                   <AdvancedContent id="advanced-settings-panel">
+                    <StyledInputContainer>
+                      <StyledInputLabel htmlFor="flowMode">
+                        Flow
+                      </StyledInputLabel>
+                      <StyledSelect
+                        id="flowMode"
+                        name="flowMode"
+                        value={flowMode}
+                        onChange={handleFlowModeChange}
+                      >
+                        <option value="buyer">Buyer</option>
+                        <option value="sellerAutopilot">
+                          Seller Autopilot
+                        </option>
+                      </StyledSelect>
+                    </StyledInputContainer>
                     <Input
                       label="Metadata Group"
                       name="metadataPlatform"
@@ -941,32 +890,6 @@ const Home: React.FC = () => {
                       onChange={handleMetadataPlatformChange}
                       valueFontSize="16px"
                     />
-                    <StyledInputContainer>
-                      <StyledInputLabel htmlFor="proofEngine">
-                        Metadata
-                      </StyledInputLabel>
-                      <StyledSelect
-                        id="proofEngine"
-                        name="proofEngine"
-                        value={proofEngine}
-                        onChange={handleProofEngineChange}
-                      >
-                        <option value="reclaim">zkTLS</option>
-                        <option value="buyerTee">TEE</option>
-                      </StyledSelect>
-                    </StyledInputContainer>
-                    {!isBuyerTeeEngine && (
-                      <Input
-                        label="Proof Index"
-                        name="proofIndex"
-                        value={proofIndex.toString()}
-                        onChange={(e) => setProofIndex(Number(e.target.value))}
-                        type="number"
-                        step="1"
-                        inputMode="numeric"
-                        valueFontSize="16px"
-                      />
-                    )}
                   </AdvancedContent>
                 )}
               </AdvancedSection>
@@ -1000,70 +923,120 @@ const Home: React.FC = () => {
             <Section>
               <StepIndicator>
                 <StepNumber>2</StepNumber>
-                <StepLabel>Fetch Metadata</StepLabel>
+                <StepLabel>
+                  {isBuyerFlow ? "Fetch Metadata" : "Seller Autopilot"}
+                </StepLabel>
               </StepIndicator>
               <StatusItem>
-                <StatusLabel>Available Metadata</StatusLabel>
+                <StatusLabel>
+                  {isBuyerFlow ? "Available Metadata" : "Seller Capture"}
+                </StatusLabel>
               </StatusItem>
-              {isBuyerTeeEngine &&
-                platformMetadata[metadataPlatform]?.buyerTeeCapture && (
-                  <ThemedText.BodySmall>
-                    Buyer TEE capture staged (
-                    {platformMetadata[metadataPlatform].metadata?.length ?? 0}{" "}
-                    payments)
-                  </ThemedText.BodySmall>
-                )}
-              {platformMetadata[metadataPlatform]?.errorMessage && (
-                <ThemedText.BodySmall style={{ color: colors.invalidRed }}>
-                  {platformMetadata[metadataPlatform].errorMessage}
-                </ThemedText.BodySmall>
-              )}
-              {platformMetadata[metadataPlatform]?.metadata ? (
-                <MetadataList>
-                  {platformMetadata[metadataPlatform].metadata.map((m) => {
-                    const metadataEntries = getVisibleMetadataEntries(m);
+              {isBuyerFlow ? (
+                <>
+                  {platformMetadata[metadataPlatform]?.buyerTeeCapture && (
+                    <ThemedText.BodySmall>
+                      Buyer TEE capture staged (
+                      {platformMetadata[metadataPlatform].metadata?.length ?? 0}{" "}
+                      payments)
+                    </ThemedText.BodySmall>
+                  )}
+                  {platformMetadata[metadataPlatform]?.errorMessage && (
+                    <ThemedText.BodySmall style={{ color: colors.invalidRed }}>
+                      {platformMetadata[metadataPlatform].errorMessage}
+                    </ThemedText.BodySmall>
+                  )}
+                  {platformMetadata[metadataPlatform]?.metadata ? (
+                    <MetadataList>
+                      {platformMetadata[metadataPlatform].metadata.map((m) => {
+                        const metadataEntries = getVisibleMetadataEntries(m);
 
-                    return (
-                      <MetadataItem
-                        key={m.originalIndex}
-                        selected={
-                          selectedMetadata?.originalIndex === m.originalIndex
-                        }
-                      >
-                        <MetadataInfo>
-                          {metadataEntries.length ? (
-                            metadataEntries.map((entry) => (
-                              <ThemedText.BodySmall key={entry.key}>
-                                {entry.key}: {entry.value}
+                        return (
+                          <MetadataItem
+                            key={m.originalIndex}
+                            selected={
+                              selectedMetadata?.originalIndex ===
+                              m.originalIndex
+                            }
+                          >
+                            <MetadataInfo>
+                              {metadataEntries.length ? (
+                                metadataEntries.map((entry) => (
+                                  <ThemedText.BodySmall key={entry.key}>
+                                    {entry.key}: {entry.value}
+                                  </ThemedText.BodySmall>
+                                ))
+                              ) : (
+                                <ThemedText.BodySmall>
+                                  Metadata: N/A
+                                </ThemedText.BodySmall>
+                              )}
+                              <ThemedText.BodySmall>
+                                Index: {m.originalIndex}
                               </ThemedText.BodySmall>
-                            ))
-                          ) : (
-                            <ThemedText.BodySmall>
-                              Metadata: N/A
-                            </ThemedText.BodySmall>
-                          )}
-                          <ThemedText.BodySmall>
-                            Index: {m.originalIndex}
-                          </ThemedText.BodySmall>
-                        </MetadataInfo>
-                        <AccessoryButton
-                          onClick={() => handleGenerateProof(m)}
-                          icon="chevronRight"
-                          disabled={
-                            selectedMetadata?.originalIndex ===
-                              m.originalIndex && proofStatus === "generating"
-                          }
-                        >
-                          Prove
-                        </AccessoryButton>
-                      </MetadataItem>
-                    );
-                  })}
+                            </MetadataInfo>
+                            <AccessoryButton
+                              onClick={() => handleGenerateProof(m)}
+                              icon="chevronRight"
+                              disabled={
+                                selectedMetadata?.originalIndex ===
+                                  m.originalIndex &&
+                                proofStatus === "generating"
+                              }
+                            >
+                              Prepare
+                            </AccessoryButton>
+                          </MetadataItem>
+                        );
+                      })}
+                    </MetadataList>
+                  ) : (
+                    <EmptyStateContainer>
+                      <EmptyStateMessage>
+                        Authenticate to see available metadata
+                      </EmptyStateMessage>
+                    </EmptyStateContainer>
+                  )}
+                </>
+              ) : sellerAutopilotResult ? (
+                <MetadataList>
+                  <MetadataItem selected={false}>
+                    <MetadataInfo>
+                      <ThemedText.BodySmall>
+                        Platform:{" "}
+                        {sellerAutopilotResult.status?.platform ??
+                          sellerAutopilotResult.capture?.platform ??
+                          paymentPlatform}
+                      </ThemedText.BodySmall>
+                      {sellerAutopilotResult.status?.status && (
+                        <ThemedText.BodySmall>
+                          Status: {sellerAutopilotResult.status.status}
+                        </ThemedText.BodySmall>
+                      )}
+                      {sellerAutopilotResult.status?.credentialType && (
+                        <ThemedText.BodySmall>
+                          Credential Type:{" "}
+                          {sellerAutopilotResult.status.credentialType}
+                        </ThemedText.BodySmall>
+                      )}
+                      {sellerAutopilotResult.capture?.payeeId && (
+                        <ThemedText.BodySmall>
+                          Payee ID: {sellerAutopilotResult.capture.payeeId}
+                        </ThemedText.BodySmall>
+                      )}
+                      {sellerAutopilotResult.capture?.offchainId && (
+                        <ThemedText.BodySmall>
+                          Offchain ID:{" "}
+                          {sellerAutopilotResult.capture.offchainId}
+                        </ThemedText.BodySmall>
+                      )}
+                    </MetadataInfo>
+                  </MetadataItem>
                 </MetadataList>
               ) : (
                 <EmptyStateContainer>
                   <EmptyStateMessage>
-                    Authenticate to see available metadata
+                    Authenticate to capture seller autopilot output
                   </EmptyStateMessage>
                 </EmptyStateContainer>
               )}
@@ -1075,43 +1048,41 @@ const Home: React.FC = () => {
               <StepIndicator>
                 <StepNumber>3</StepNumber>
                 <StepLabel>
-                  {isBuyerTeeEngine
-                    ? "Verify Buyer TEE Payment"
-                    : "Generate zkTLS Proof"}
+                  {isSellerAutopilotFlow
+                    ? "Seller Autopilot Output"
+                    : isIdentityFlow
+                    ? "Prepare Identity TEE"
+                    : "Prepare Buyer TEE Payment"}
                 </StepLabel>
               </StepIndicator>
               <StatusItem>
-                <StatusLabel>Proof Status</StatusLabel>
-                <AccessoryButton onClick={handleTogglePasteMode} height={32}>
-                  {isPasteMode
-                    ? "Generate Mode"
-                    : isBuyerTeeEngine
-                    ? "Paste Attestation"
-                    : "Paste Proof"}
-                </AccessoryButton>
+                <StatusLabel>
+                  {isBuyerFlow ? "TEE Status" : "Capture Status"}
+                </StatusLabel>
+                {isBuyerFlow && (
+                  <AccessoryButton onClick={handleTogglePasteMode} height={32}>
+                    {isPasteMode ? "Generate Mode" : "Paste Attestation"}
+                  </AccessoryButton>
+                )}
               </StatusItem>
-              {isPasteMode ? (
+              {isBuyerFlow && isPasteMode ? (
                 <ProofContainer>
                   <ThemedText.BodySecondary>
-                    {isBuyerTeeEngine
-                      ? "Paste your buyer TEE attestation JSON below:"
-                      : "Paste your proof JSON below:"}
+                    Paste your buyer TEE request or attestation JSON below:
                   </ThemedText.BodySecondary>
                   <ProofTextArea
                     value={resultProof}
                     onChange={(e) => handlePastedProofChange(e.target.value)}
                     aria-label="Proof JSON"
                     placeholder={
-                      isBuyerTeeEngine
-                        ? 'Paste buyer TEE attestation JSON here…\n\nExpected shape:\n{ "signature": "0x…", "signer": "0x…", "encodedPaymentDetails": "0x…", "typedDataValue": { … } }'
-                        : 'Paste your proof JSON here…\n\nExpected formats:\n1) { "proof": { "claim": { … }, "signatures": { … } } }\n2) [{ "claim": { … }, "signatures": { … } }, { … }]'
+                      'Paste buyer TEE JSON here…\n\nExpected attestation shape:\n{ "signature": "0x…", "signer": "0x…", "encodedPaymentDetails": "0x…", "typedDataValue": { … } }\n\nOr request shape:\n{ "proofType": "buyerTee", "encryptedSessionMaterial": "…", "params": { … } }'
                     }
                   />
                   {proofStatus === "success" && (
                     <ThemedText.BodySecondary
                       style={{ color: colors.validGreen }}
                     >
-                      Valid proof detected
+                      Valid TEE JSON detected
                     </ThemedText.BodySecondary>
                   )}
                 </ProofContainer>
@@ -1121,21 +1092,34 @@ const Home: React.FC = () => {
                     <SpinnerContainer>
                       <Spinner color={colors.defaultBorderColor} size={40} />
                       <SpinnerMessage>
-                        {isBuyerTeeEngine
-                          ? "Verifying payment in buyer TEE…"
-                          : "Generating zero-knowledge proof…"}
-                        <br />
-                        {isBuyerTeeEngine
-                          ? "This may take up to 90 seconds"
-                          : "This may take up to 30 seconds"}
+                        {isSellerAutopilotFlow ? (
+                          "Waiting for seller autopilot response..."
+                        ) : (
+                          <>
+                            Preparing buyer TEE request...
+                            <br />
+                            This should complete as soon as captured metadata is
+                            available
+                          </>
+                        )}
                       </SpinnerMessage>
                     </SpinnerContainer>
                   )}
                   {(proofStatus === "success" || proofStatus === "error") && (
                     <>
                       <ThemedText.BodySecondary>
-                        {proofStatus === "success" ? (
-                          `Proof generated! ${
+                        {isSellerAutopilotFlow && proofStatus === "success" ? (
+                          "Seller Autopilot response ready!"
+                        ) : isIdentityFlow && proofStatus === "success" ? (
+                          `Identity TEE request ready! ${
+                            proofGenerationDuration
+                              ? `(${(proofGenerationDuration / 1000).toFixed(
+                                  1
+                                )}s)`
+                              : ""
+                          }`
+                        ) : proofStatus === "success" ? (
+                          `TEE request ready! ${
                             proofGenerationDuration
                               ? `(${(proofGenerationDuration / 1000).toFixed(
                                   1
@@ -1144,15 +1128,14 @@ const Home: React.FC = () => {
                           }`
                         ) : (
                           <>
-                            {isBuyerTeeEngine
-                              ? "Error preparing proof: "
-                              : "Error generating proof: "}
+                            {isSellerAutopilotFlow
+                              ? "Seller Autopilot error: "
+                              : "Error preparing proof: "}
                             <ErrorMessage>
-                              {isBuyerTeeEngine
-                                ? attestationError ||
-                                  "Buyer TEE verification failed."
-                                : paymentProof?.error?.message ||
-                                  "Proof generation failed."}
+                              {attestationError ||
+                                (isSellerAutopilotFlow
+                                  ? "Seller Autopilot capture failed."
+                                  : "Buyer TEE preparation failed.")}
                             </ErrorMessage>
                           </>
                         )}
@@ -1160,340 +1143,350 @@ const Home: React.FC = () => {
                       <ProofTextArea
                         readOnly
                         value={resultProof}
-                        aria-label="Generated proof JSON"
+                        aria-label={
+                          isSellerAutopilotFlow
+                            ? "Seller autopilot response JSON"
+                            : "Generated proof JSON"
+                        }
                       />
                     </>
-                  )}
-                  {proofStatus === "timeout" && (
-                    <ThemedText.LabelSmall>
-                      Timeout: no proof received.
-                    </ThemedText.LabelSmall>
                   )}
                 </ProofContainer>
               ) : (
                 <EmptyStateContainer>
                   <EmptyStateMessage>
-                    Select metadata and generate a proof to see results here
+                    {isSellerAutopilotFlow
+                      ? "Authenticate to capture seller autopilot output"
+                      : isIdentityFlow
+                      ? "Select metadata and prepare an identity TEE request to see results here"
+                      : "Select metadata and prepare a buyer TEE request to see results here"}
                   </EmptyStateMessage>
                 </EmptyStateContainer>
               )}
             </Section>
           </ProofPanel>
 
-          <VerifyPanel>
-            <Section>
-              <StepIndicator>
-                <StepNumber>4</StepNumber>
-                <StepLabel>
-                  {isBuyerTeeEngine
-                    ? "Generate FulfillIntent Params"
-                    : "Verify zkTLS Proof & Generate FulfillIntent Params"}
-                </StepLabel>
-              </StepIndicator>
+          {isBuyerFlow && (
+            <VerifyPanel>
+              <Section>
+                <StepIndicator>
+                  <StepNumber>4</StepNumber>
+                  <StepLabel>{stepFourLabel}</StepLabel>
+                </StepIndicator>
 
-              <VerifyGrid>
-                <AttestationContainer>
-                  <AttestationControls>
-                    <StatusItem>
-                      <StatusLabel>Attestation Service</StatusLabel>
-                    </StatusItem>
-                    <StyledInputContainer>
-                      <StyledInputLabel htmlFor="verifyIntentHash">
-                        Intent Hash (for Verify)
-                      </StyledInputLabel>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                          alignItems: "stretch",
-                        }}
-                      >
-                        <StyledSelect
-                          as="input"
-                          id="verifyIntentHash"
-                          name="verifyIntentHash"
-                          value={verifyIntentHash}
-                          onChange={(e: any) => {
-                            const v = e.target.value;
-                            if (v === "" || /^(0x)?[0-9a-fA-F]*$/.test(v))
-                              setVerifyIntentHash(v);
-                          }}
-                          onBlur={() => {
-                            try {
-                              setVerifyIntentHash(
-                                normalizeHex32(verifyIntentHash)
-                              );
-                            } catch {}
-                          }}
-                          autoComplete="off"
-                          inputMode="text"
-                          spellCheck="false"
-                          style={{ flex: 1 }}
-                        />
-                        <AccessoryButton
-                          onClick={handleFetchIntentFromChain}
-                          loading={fetchIntentLoading}
-                          disabled={fetchIntentLoading}
-                          height={40}
-                          icon="chevronRight"
-                          title="Fetch Intent"
-                        />
-                      </div>
-                      {fetchIntentError && (
-                        <ThemedText.LabelSmall
-                          style={{ color: colors.invalidRed, marginTop: 6 }}
-                        >
-                          {fetchIntentError}
-                        </ThemedText.LabelSmall>
+                <VerifyGrid>
+                  <AttestationContainer>
+                    <AttestationControls>
+                      <StatusItem>
+                        <StatusLabel>Attestation Service</StatusLabel>
+                      </StatusItem>
+                      {isBuyerPaymentFlow && (
+                        <StyledInputContainer>
+                          <StyledInputLabel htmlFor="verifyIntentHash">
+                            Intent Hash (for Verify)
+                          </StyledInputLabel>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              alignItems: "stretch",
+                            }}
+                          >
+                            <StyledSelect
+                              as="input"
+                              id="verifyIntentHash"
+                              name="verifyIntentHash"
+                              value={verifyIntentHash}
+                              onChange={(e: any) => {
+                                const v = e.target.value;
+                                if (v === "" || /^(0x)?[0-9a-fA-F]*$/.test(v))
+                                  setVerifyIntentHash(v);
+                              }}
+                              onBlur={() => {
+                                try {
+                                  setVerifyIntentHash(
+                                    normalizeHex32(verifyIntentHash)
+                                  );
+                                } catch {}
+                              }}
+                              autoComplete="off"
+                              inputMode="text"
+                              spellCheck="false"
+                              style={{ flex: 1 }}
+                            />
+                            <AccessoryButton
+                              onClick={handleFetchIntentFromChain}
+                              loading={fetchIntentLoading}
+                              disabled={fetchIntentLoading}
+                              height={40}
+                              icon="chevronRight"
+                              title="Fetch Intent"
+                            />
+                          </div>
+                          {fetchIntentError && (
+                            <ThemedText.LabelSmall
+                              style={{ color: colors.invalidRed, marginTop: 6 }}
+                            >
+                              {fetchIntentError}
+                            </ThemedText.LabelSmall>
+                          )}
+                        </StyledInputContainer>
                       )}
-                    </StyledInputContainer>
-                    <Input
-                      label="Attestation Service URL"
-                      name="attestationBaseUrl"
-                      value={attestationBaseUrl}
-                      onChange={(e) => setAttestationBaseUrl(e.target.value)}
-                      valueFontSize="14px"
-                      placeholder="https://attestation-service-staging.zkp2p.xyz…"
-                      type="url"
-                      inputMode="url"
-                      readOnly={attestationLoading}
-                    />
-                    <StyledInputContainer>
-                      <StyledInputLabel htmlFor="chainId">
-                        Chain
-                      </StyledInputLabel>
-                      <StyledSelect
-                        id="chainId"
-                        name="chainId"
-                        value={chainId}
-                        onChange={(e) => setChainId(parseInt(e.target.value))}
-                        disabled={attestationLoading}
-                      >
-                        <option value="84532">Base Sepolia (84532)</option>
-                        <option value="8453">Base (8453)</option>
-                      </StyledSelect>
-                    </StyledInputContainer>
-                    {isBuyerTeeEngine && (
-                      <StyledInputContainer>
-                        <StyledInputLabel htmlFor="buyerTeeVerifyMetadata">
-                          Metadata
-                        </StyledInputLabel>
-                        <MetadataJsonTextArea
-                          id="buyerTeeVerifyMetadata"
-                          name="buyerTeeVerifyMetadata"
-                          value={buyerTeeVerifyMetadataJson}
-                          onChange={(e) =>
-                            setBuyerTeeVerifyMetadataJson(e.target.value)
-                          }
-                          placeholder="{}"
-                          spellCheck="false"
-                          readOnly={attestationLoading}
-                        />
-                      </StyledInputContainer>
-                    )}
-                    {/* Verifying Contract moved to Advanced */}
-                    <AdvancedSection>
-                      <AdvancedHeader
-                        type="button"
-                        onClick={() =>
-                          setIsIntentAdvancedOpen(!isIntentAdvancedOpen)
-                        }
-                        aria-expanded={isIntentAdvancedOpen}
-                        aria-controls="intent-advanced-panel"
-                      >
-                        <ThemedText.BodySmall>
-                          Intent Details (Advanced)
-                        </ThemedText.BodySmall>
-                        <AdvancedChevron
-                          size={16}
-                          $expanded={isIntentAdvancedOpen}
-                        />
-                      </AdvancedHeader>
-                      {isIntentAdvancedOpen && (
-                        <AdvancedContent id="intent-advanced-panel">
-                          <CalldataInputsContainer>
-                            <CalldataInputsGrid>
-                              <Input
-                                label="Amount"
-                                name="intentAmount"
-                                value={calldataInputs.intentAmount}
-                                onChange={(e) =>
-                                  handleCalldataInputChange(
-                                    "intentAmount",
-                                    e.target.value
-                                  )
-                                }
-                                type="number"
-                                step="1"
-                                inputMode="numeric"
-                                valueFontSize="14px"
-                                placeholder="e.g. 1000000…"
-                              />
-                              <Input
-                                label="Timestamp (sec)"
-                                name="intentTimestamp"
-                                value={calldataInputs.intentTimestamp}
-                                onChange={(e) =>
-                                  handleCalldataInputChange(
-                                    "intentTimestamp",
-                                    e.target.value
-                                  )
-                                }
-                                type="number"
-                                step="1"
-                                inputMode="numeric"
-                                valueFontSize="14px"
-                                placeholder="e.g. 1712345678…"
-                              />
-                              <Input
-                                label="Payee Details (bytes32)"
-                                name="payeeDetails"
-                                value={calldataInputs.payeeDetails}
-                                onChange={(e) =>
-                                  handleCalldataInputChange(
-                                    "payeeDetails",
-                                    e.target.value
-                                  )
-                                }
-                                valueFontSize="14px"
-                                placeholder="0x…"
-                              />
-                              <Input
-                                label="Fiat Currency (bytes32)"
-                                name="fiatCurrency"
-                                value={calldataInputs.fiatCurrency}
-                                onChange={(e) =>
-                                  handleCalldataInputChange(
-                                    "fiatCurrency",
-                                    e.target.value
-                                  )
-                                }
-                                valueFontSize="14px"
-                                placeholder="0x…"
-                              />
-                              <Input
-                                label="Conversion Rate (1e18)"
-                                name="conversionRate"
-                                value={calldataInputs.conversionRate}
-                                onChange={(e) =>
-                                  handleCalldataInputChange(
-                                    "conversionRate",
-                                    e.target.value
-                                  )
-                                }
-                                type="number"
-                                step="any"
-                                inputMode="decimal"
-                                valueFontSize="14px"
-                                placeholder="e.g. 1.00…"
-                              />
-                              <Input
-                                label="Payment Method (bytes32)"
-                                name="paymentMethod"
-                                value={paymentMethodHex}
-                                onChange={(e) =>
-                                  setPaymentMethodHex(e.target.value)
-                                }
-                                valueFontSize="14px"
-                                placeholder={defaultPaymentMethodHex}
-                              />
-                              <Input
-                                label="Verifying Contract"
-                                name="verifyingContract"
-                                value={verifyingContract}
-                                onChange={(e) =>
-                                  setVerifyingContract(e.target.value)
-                                }
-                                valueFontSize="12px"
-                                placeholder="e.g. 0x16b3…"
-                              />
-                              <Input
-                                label="Post Intent Hook Data (bytes)"
-                                name="postIntentHookData"
-                                value={postIntentHookData}
-                                onChange={(e) =>
-                                  setPostIntentHookData(e.target.value)
-                                }
-                                valueFontSize="12px"
-                                placeholder="0x…"
-                              />
-                            </CalldataInputsGrid>
-                          </CalldataInputsContainer>
-                        </AdvancedContent>
-                      )}
-                    </AdvancedSection>
-
-                    <ButtonContainer>
-                      <div style={{ display: "flex", gap: 12 }}>
-                        <Button
-                          onClick={handleSendToAttestation}
-                          disabled={
-                            attestationLoading ||
-                            !resultProof ||
-                            proofStatus !== "success"
-                          }
-                          loading={attestationLoading}
-                          height={48}
-                          width={216}
-                        >
-                          {isBuyerTeeEngine ? "Verify" : "Verify Proof"}
-                        </Button>
-                        <Button
-                          onClick={handleGenerateCalldata}
-                          height={48}
-                          width={216}
-                          disabled={!attestationResponse}
-                        >
-                          Generate Params
-                        </Button>
-                      </div>
-                    </ButtonContainer>
-                  </AttestationControls>
-                </AttestationContainer>
-                <VerifyRight>
-                  {attestationResponse && (
-                    <AttestationResultSection>
-                      <ThemedText.BodySecondary>
-                        ✅ Attestation Response:
-                      </ThemedText.BodySecondary>
-                      <AttestationResponseArea
-                        readOnly
-                        value={attestationResponse}
-                        aria-label="Attestation response"
+                      <Input
+                        label="Attestation Service URL"
+                        name="attestationBaseUrl"
+                        value={attestationBaseUrl}
+                        onChange={(e) => setAttestationBaseUrl(e.target.value)}
+                        valueFontSize="14px"
+                        placeholder="https://attestation-service-staging.zkp2p.xyz…"
+                        type="url"
+                        inputMode="url"
+                        readOnly={attestationLoading}
                       />
-                    </AttestationResultSection>
-                  )}
-                  {attestationError && (
-                    <AttestationErrorMessage>
-                      ❌ Attestation Error: {attestationError}
-                    </AttestationErrorMessage>
-                  )}
-                  {attestationResponse ? (
-                    <CalldataOutputContainer>
-                      {calldataError && (
-                        <CalldataErrorMessage>
-                          ❌ Error: {calldataError}
-                        </CalldataErrorMessage>
+                      {isBuyerPaymentFlow && (
+                        <StyledInputContainer>
+                          <StyledInputLabel htmlFor="chainId">
+                            Chain
+                          </StyledInputLabel>
+                          <StyledSelect
+                            id="chainId"
+                            name="chainId"
+                            value={chainId}
+                            onChange={(e) =>
+                              setChainId(parseInt(e.target.value))
+                            }
+                            disabled={attestationLoading}
+                          >
+                            <option value="84532">Base Sepolia (84532)</option>
+                            <option value="8453">Base (8453)</option>
+                          </StyledSelect>
+                        </StyledInputContainer>
                       )}
-                      {generatedCalldata && (
-                        <>
-                          <ThemedText.BodySecondary>
-                            ✅ FulfillIntent params generated successfully:
-                          </ThemedText.BodySecondary>
-                          <CalldataTextArea
-                            readOnly
-                            value={generatedCalldata}
-                            aria-label="Fulfill intent calldata"
-                            placeholder="Generated fulfillIntent params will appear here…"
+                      {isBuyerFlow && (
+                        <StyledInputContainer>
+                          <StyledInputLabel htmlFor="buyerTeeVerifyMetadata">
+                            Metadata
+                          </StyledInputLabel>
+                          <MetadataJsonTextArea
+                            id="buyerTeeVerifyMetadata"
+                            name="buyerTeeVerifyMetadata"
+                            value={buyerTeeVerifyMetadataJson}
+                            onChange={(e) =>
+                              setBuyerTeeVerifyMetadataJson(e.target.value)
+                            }
+                            placeholder="{}"
+                            spellCheck="false"
+                            readOnly={attestationLoading}
                           />
-                        </>
+                        </StyledInputContainer>
                       )}
-                    </CalldataOutputContainer>
-                  ) : null}
-                </VerifyRight>
-              </VerifyGrid>
-            </Section>
-          </VerifyPanel>
+                      {isBuyerPaymentFlow && (
+                        <AdvancedSection>
+                          <AdvancedHeader
+                            type="button"
+                            onClick={() =>
+                              setIsIntentAdvancedOpen(!isIntentAdvancedOpen)
+                            }
+                            aria-expanded={isIntentAdvancedOpen}
+                            aria-controls="intent-advanced-panel"
+                          >
+                            <ThemedText.BodySmall>
+                              Intent Details (Advanced)
+                            </ThemedText.BodySmall>
+                            <AdvancedChevron
+                              size={16}
+                              $expanded={isIntentAdvancedOpen}
+                            />
+                          </AdvancedHeader>
+                          {isIntentAdvancedOpen && (
+                            <AdvancedContent id="intent-advanced-panel">
+                              <CalldataInputsContainer>
+                                <CalldataInputsGrid>
+                                  <Input
+                                    label="Amount"
+                                    name="intentAmount"
+                                    value={calldataInputs.intentAmount}
+                                    onChange={(e) =>
+                                      handleCalldataInputChange(
+                                        "intentAmount",
+                                        e.target.value
+                                      )
+                                    }
+                                    type="number"
+                                    step="1"
+                                    inputMode="numeric"
+                                    valueFontSize="14px"
+                                    placeholder="e.g. 1000000…"
+                                  />
+                                  <Input
+                                    label="Timestamp (sec)"
+                                    name="intentTimestamp"
+                                    value={calldataInputs.intentTimestamp}
+                                    onChange={(e) =>
+                                      handleCalldataInputChange(
+                                        "intentTimestamp",
+                                        e.target.value
+                                      )
+                                    }
+                                    type="number"
+                                    step="1"
+                                    inputMode="numeric"
+                                    valueFontSize="14px"
+                                    placeholder="e.g. 1712345678…"
+                                  />
+                                  <Input
+                                    label="Payee Details (bytes32)"
+                                    name="payeeDetails"
+                                    value={calldataInputs.payeeDetails}
+                                    onChange={(e) =>
+                                      handleCalldataInputChange(
+                                        "payeeDetails",
+                                        e.target.value
+                                      )
+                                    }
+                                    valueFontSize="14px"
+                                    placeholder="0x…"
+                                  />
+                                  <Input
+                                    label="Fiat Currency (bytes32)"
+                                    name="fiatCurrency"
+                                    value={calldataInputs.fiatCurrency}
+                                    onChange={(e) =>
+                                      handleCalldataInputChange(
+                                        "fiatCurrency",
+                                        e.target.value
+                                      )
+                                    }
+                                    valueFontSize="14px"
+                                    placeholder="0x…"
+                                  />
+                                  <Input
+                                    label="Conversion Rate (1e18)"
+                                    name="conversionRate"
+                                    value={calldataInputs.conversionRate}
+                                    onChange={(e) =>
+                                      handleCalldataInputChange(
+                                        "conversionRate",
+                                        e.target.value
+                                      )
+                                    }
+                                    type="number"
+                                    step="any"
+                                    inputMode="decimal"
+                                    valueFontSize="14px"
+                                    placeholder="e.g. 1.00…"
+                                  />
+                                  <Input
+                                    label="Payment Method (bytes32)"
+                                    name="paymentMethod"
+                                    value={paymentMethodHex}
+                                    onChange={(e) =>
+                                      setPaymentMethodHex(e.target.value)
+                                    }
+                                    valueFontSize="14px"
+                                    placeholder={defaultPaymentMethodHex}
+                                  />
+                                  <Input
+                                    label="Verifying Contract"
+                                    name="verifyingContract"
+                                    value={verifyingContract}
+                                    onChange={(e) =>
+                                      setVerifyingContract(e.target.value)
+                                    }
+                                    valueFontSize="12px"
+                                    placeholder="e.g. 0x16b3…"
+                                  />
+                                  <Input
+                                    label="Post Intent Hook Data (bytes)"
+                                    name="postIntentHookData"
+                                    value={postIntentHookData}
+                                    onChange={(e) =>
+                                      setPostIntentHookData(e.target.value)
+                                    }
+                                    valueFontSize="12px"
+                                    placeholder="0x…"
+                                  />
+                                </CalldataInputsGrid>
+                              </CalldataInputsContainer>
+                            </AdvancedContent>
+                          )}
+                        </AdvancedSection>
+                      )}
+
+                      <ButtonContainer>
+                        <div style={{ display: "flex", gap: 12 }}>
+                          <Button
+                            onClick={handleSendToAttestation}
+                            disabled={
+                              attestationLoading ||
+                              !resultProof ||
+                              proofStatus !== "success"
+                            }
+                            loading={attestationLoading}
+                            height={48}
+                            width={216}
+                          >
+                            {submitButtonLabel}
+                          </Button>
+                          {isBuyerPaymentFlow && (
+                            <Button
+                              onClick={handleGenerateCalldata}
+                              height={48}
+                              width={216}
+                              disabled={!attestationResponse}
+                            >
+                              Generate Params
+                            </Button>
+                          )}
+                        </div>
+                      </ButtonContainer>
+                    </AttestationControls>
+                  </AttestationContainer>
+                  <VerifyRight>
+                    {attestationResponse && (
+                      <AttestationResultSection>
+                        <ThemedText.BodySecondary>
+                          ✅ {attestationResponseLabel}
+                        </ThemedText.BodySecondary>
+                        <AttestationResponseArea
+                          readOnly
+                          value={attestationResponse}
+                          aria-label="Attestation response"
+                        />
+                      </AttestationResultSection>
+                    )}
+                    {attestationError && (
+                      <AttestationErrorMessage>
+                        ❌ Attestation Error: {attestationError}
+                      </AttestationErrorMessage>
+                    )}
+                    {isBuyerPaymentFlow && attestationResponse ? (
+                      <CalldataOutputContainer>
+                        {calldataError && (
+                          <CalldataErrorMessage>
+                            ❌ Error: {calldataError}
+                          </CalldataErrorMessage>
+                        )}
+                        {generatedCalldata && (
+                          <>
+                            <ThemedText.BodySecondary>
+                              ✅ FulfillIntent params generated successfully:
+                            </ThemedText.BodySecondary>
+                            <CalldataTextArea
+                              readOnly
+                              value={generatedCalldata}
+                              aria-label="Fulfill intent calldata"
+                              placeholder="Generated fulfillIntent params will appear here…"
+                            />
+                          </>
+                        )}
+                      </CalldataOutputContainer>
+                    ) : null}
+                  </VerifyRight>
+                </VerifyGrid>
+              </Section>
+            </VerifyPanel>
+          )}
         </AppContainer>
       </MainContent>
     </PageWrapper>
@@ -1920,37 +1913,6 @@ const SpinnerMessage = styled(ThemedText.LabelSmall)`
   margin-top: 15px;
   text-align: center;
   opacity: 0.8;
-`;
-
-const IconButton = styled.button.attrs({ type: "button" })`
-  background: none;
-  border: none;
-  color: ${colors.white};
-  padding: 4px 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  &:hover:not(:disabled) {
-    opacity: 0.8;
-  }
-
-  &:focus-visible {
-    outline: 1px solid ${opacify(30, colors.white)};
-    outline-offset: 2px;
-  }
-`;
-
-const StyledChevronRight = styled(ChevronRight).attrs({ "aria-hidden": true })`
-  width: 16px;
-  height: 16px;
-  color: ${colors.white};
 `;
 
 const AdvancedChevron = styled(ChevronRight).attrs({ "aria-hidden": true })<{
