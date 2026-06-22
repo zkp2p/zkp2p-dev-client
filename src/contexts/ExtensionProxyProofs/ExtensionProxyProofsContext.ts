@@ -22,7 +22,8 @@ interface ExtensionProxyProofsValues {
     actionType: string,
     platform: string,
     captureMode?: ProofCaptureMode,
-    attestationServiceUrl?: string | null
+    attestationServiceUrl?: string | null,
+    providerConfig?: Record<string, unknown> | null
   ) => void;
   platformMetadata: Record<string, MetadataInfo>;
 }
@@ -36,7 +37,8 @@ const defaultValues: ExtensionProxyProofsValues = {
     _actionType: string,
     _platform: string,
     _captureMode?: ProofCaptureMode,
-    _attestationServiceUrl?: string | null
+    _attestationServiceUrl?: string | null,
+    _providerConfig?: Record<string, unknown> | null
   ) => {},
   platformMetadata: {} as Record<string, MetadataInfo>,
 };

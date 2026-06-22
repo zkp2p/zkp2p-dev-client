@@ -8,7 +8,6 @@ export type GenericRecord = Record<string, unknown>;
 export type ProofRoute = {
   captureActionType: string;
   capturePlatform: string;
-  metadataGroup: string;
   verifierActionType: string;
   verifierPlatform: string;
 };

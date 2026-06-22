@@ -70,13 +70,6 @@ const DEFAULT_CALLDATA_INPUTS = {
   conversionRate: "0",
 };
 
-// Helper: derive metadata group from action type.
-const derivePlatformFromActionType = (action: string, fallback: string) => {
-  if (!action) return fallback;
-  const parts = action.split("_");
-  return parts.length > 1 ? parts[parts.length - 1] : fallback;
-};
-
 const getSellerAutopilotActionType = (platform: string) =>
   `transfer_${platform.trim().toLowerCase()}`;
 
@@ -88,6 +81,18 @@ const isNonEmptyString = (value: unknown): value is string =>
 
 const isHexHash = (value: unknown): value is `0x${string}` =>
   typeof value === "string" && /^0x[0-9a-fA-F]+$/u.test(value);
+
+const parseProviderConfigJson = (value: string): GenericRecord | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = JSON.parse(trimmed);
+  if (!isRecord(parsed) || Array.isArray(parsed)) {
+    throw new Error("Provider config JSON must be an object.");
+  }
+
+  return parsed;
+};
 
 const isSarCredentialBundle = (
   value: unknown
@@ -167,16 +172,6 @@ const Home: React.FC = () => {
     return localStorage.getItem("paymentPlatform") || "venmo";
   });
   const [flowMode, setFlowMode] = useState<FlowMode>("buyer");
-  const [metadataPlatform, setMetadataPlatform] = useState(() => {
-    const initialPaymentPlatform =
-      localStorage.getItem("paymentPlatform") || "venmo";
-    const initialActionType =
-      localStorage.getItem("actionType") || "transfer_venmo";
-    return derivePlatformFromActionType(
-      initialActionType,
-      initialPaymentPlatform
-    );
-  });
   const [isInstallClicked, setIsInstallClicked] = useState(false);
 
   const [selectedMetadata, setSelectedMetadata] =
@@ -204,6 +199,9 @@ const Home: React.FC = () => {
   const [attestationBaseUrl, setAttestationBaseUrl] = useState<string>(() => {
     const stored = localStorage.getItem("attestationBaseUrl");
     return stored || "https://attestation-service.zkp2p.xyz";
+  });
+  const [providerConfigJson, setProviderConfigJson] = useState<string>(() => {
+    return localStorage.getItem("providerConfigJson") || "";
   });
   const [sellerAutopilotResult, setSellerAutopilotResult] =
     useState<SarCredentialCapture | null>(null);
@@ -234,6 +232,7 @@ const Home: React.FC = () => {
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const defaultPaymentMethodHex = keccak256(paymentPlatform);
+  const metadataLookupPlatform = paymentPlatform.trim();
   const isBuyerFlow = flowMode === "buyer";
   const isSellerAutopilotFlow = flowMode === "sellerAutopilot";
   const isIdentityFlow = isBuyerFlow && isIdentityActionType(actionType);
@@ -257,6 +256,10 @@ const Home: React.FC = () => {
   useEffect(() => {
     localStorage.setItem("attestationBaseUrl", attestationBaseUrl);
   }, [attestationBaseUrl]);
+
+  useEffect(() => {
+    localStorage.setItem("providerConfigJson", providerConfigJson);
+  }, [providerConfigJson]);
 
   useEffect(() => {
     refetchExtensionVersion();
@@ -286,12 +289,6 @@ const Home: React.FC = () => {
       setVerifyingContract(next);
     }
   }, [chainId]);
-
-  // Keep metadata group aligned with action type or selected payment platform.
-  useEffect(() => {
-    const derived = derivePlatformFromActionType(actionType, paymentPlatform);
-    setMetadataPlatform((prev) => (prev !== derived ? derived : prev));
-  }, [actionType, paymentPlatform]);
 
   useEffect(() => {
     const handleSellerAutopilotMessage = (event: MessageEvent) => {
@@ -360,16 +357,7 @@ const Home: React.FC = () => {
   const handlePaymentPlatformChange = (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const newValue = event.target.value;
-    setPaymentPlatform(newValue);
-    setMetadataPlatform(newValue);
-  };
-
-  const handleMetadataPlatformChange = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const newValue = event.target.value;
-    setMetadataPlatform(newValue);
+    setPaymentPlatform(event.target.value);
   };
 
   const handleFlowModeChange = (
@@ -397,12 +385,10 @@ const Home: React.FC = () => {
     const captureActionType = isSellerAutopilotFlow
       ? getSellerAutopilotActionType(capturePlatform)
       : actionType.trim();
-    const metadataGroup = metadataPlatform.trim();
 
     return {
       captureActionType,
       capturePlatform,
-      metadataGroup,
       verifierActionType: captureActionType,
       verifierPlatform: capturePlatform,
     };
@@ -490,6 +476,17 @@ const Home: React.FC = () => {
       return;
     }
     const route = resolveProofRoute();
+    let providerConfig: GenericRecord | null = null;
+    try {
+      providerConfig = parseProviderConfigJson(providerConfigJson);
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Provider config JSON is invalid."
+      );
+      return;
+    }
     const captureMode = isSellerAutopilotFlow
       ? SELLER_AUTOPILOT_CAPTURE_MODE
       : BUYER_TEE_CAPTURE_MODE;
@@ -521,7 +518,8 @@ const Home: React.FC = () => {
       route.captureActionType,
       route.capturePlatform,
       captureMode,
-      isSellerAutopilotFlow ? undefined : attestationBaseUrl.trim() || null
+      isSellerAutopilotFlow ? undefined : attestationBaseUrl.trim() || null,
+      providerConfig
     );
   };
 
@@ -537,7 +535,7 @@ const Home: React.FC = () => {
     setAttestationError(null);
 
     try {
-      const metadataInfo = platformMetadata[metadataPlatform];
+      const metadataInfo = platformMetadata[metadataLookupPlatform];
       const capture = metadataInfo?.buyerTeeCapture;
       if (!capture) {
         throw new Error(
@@ -921,13 +919,21 @@ const Home: React.FC = () => {
                         </option>
                       </StyledSelect>
                     </StyledInputContainer>
-                    <Input
-                      label="Metadata Group"
-                      name="metadataPlatform"
-                      value={metadataPlatform}
-                      onChange={handleMetadataPlatformChange}
-                      valueFontSize="16px"
-                    />
+                    <StyledInputContainer>
+                      <StyledInputLabel htmlFor="providerConfigJson">
+                        Provider Config JSON
+                      </StyledInputLabel>
+                      <MetadataJsonTextArea
+                        id="providerConfigJson"
+                        name="providerConfigJson"
+                        value={providerConfigJson}
+                        onChange={(e) =>
+                          setProviderConfigJson(e.target.value)
+                        }
+                        placeholder='Paste provider config JSON, e.g. { "actionType": "transfer_zelle_chase", "metadata": { "platform": "zelle" } }'
+                        spellCheck="false"
+                      />
+                    </StyledInputContainer>
                   </AdvancedContent>
                 )}
               </AdvancedSection>
@@ -972,21 +978,21 @@ const Home: React.FC = () => {
               </StatusItem>
               {isBuyerFlow ? (
                 <>
-                  {platformMetadata[metadataPlatform]?.buyerTeeCapture && (
+                  {platformMetadata[metadataLookupPlatform]?.buyerTeeCapture && (
                     <ThemedText.BodySmall>
                       Buyer TEE capture staged (
-                      {platformMetadata[metadataPlatform].metadata?.length ?? 0}{" "}
+                      {platformMetadata[metadataLookupPlatform].metadata?.length ?? 0}{" "}
                       payments)
                     </ThemedText.BodySmall>
                   )}
-                  {platformMetadata[metadataPlatform]?.errorMessage && (
+                  {platformMetadata[metadataLookupPlatform]?.errorMessage && (
                     <ThemedText.BodySmall style={{ color: colors.invalidRed }}>
-                      {platformMetadata[metadataPlatform].errorMessage}
+                      {platformMetadata[metadataLookupPlatform].errorMessage}
                     </ThemedText.BodySmall>
                   )}
-                  {platformMetadata[metadataPlatform]?.metadata ? (
+                  {platformMetadata[metadataLookupPlatform]?.metadata ? (
                     <MetadataList>
-                      {platformMetadata[metadataPlatform].metadata.map((m) => {
+                      {platformMetadata[metadataLookupPlatform].metadata.map((m) => {
                         const metadataEntries = getVisibleMetadataEntries(m);
 
                         return (
