@@ -86,7 +86,8 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
     actionType: string,
     platform: string,
     captureMode?: ProofCaptureMode,
-    attestationServiceUrl?: string | null
+    attestationServiceUrl?: string | null,
+    providerConfig?: Record<string, unknown> | null
   ) => {
     const message: Record<string, unknown> = {
       type: ExtensionPostMessage.OPEN_NEW_TAB,
@@ -102,6 +103,10 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
       message.attestationServiceUrl = attestationServiceUrl;
     }
 
+    if (providerConfig) {
+      message.providerConfig = providerConfig;
+    }
+
     window.postMessage(message, "*");
 
     console.log(
@@ -110,7 +115,8 @@ const ExtensionNotarizationsProvider = ({ children }: ProvidersProps) => {
       actionType,
       platform,
       captureMode,
-      attestationServiceUrl
+      attestationServiceUrl,
+      providerConfig
     );
   };
 
