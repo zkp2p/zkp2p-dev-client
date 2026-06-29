@@ -1,9 +1,39 @@
 import type {
   BuyerTeePaymentParams,
   ExtensionRequestMetadata,
+  SarCredentialBundle,
+  SarCredentialCapture,
 } from "@helpers/types";
 
 export type GenericRecord = Record<string, unknown>;
+
+export type AttestationIntentDetails = {
+  amount: string;
+  conversionRate: string;
+  fiatCurrency: string;
+  intentHash: string;
+  payeeDetails: string;
+  paymentMethod: string;
+  timestampMs: string;
+  timestampBufferMs?: string;
+};
+
+export type CuratorSellerVerifyMetadata = {
+  nextId?: string;
+  after?: number;
+  before?: number;
+};
+
+export type CuratorSellerVerifyRequestPayload = {
+  txId?: string;
+  metadata?: CuratorSellerVerifyMetadata;
+  memo?: string;
+  expectedAmountMinorUnits?: string;
+  resolutionMode?: "memo" | "name";
+  payerHandle?: string;
+  chainId: number;
+  intent: AttestationIntentDetails;
+};
 
 export type ProofRoute = {
   captureActionType: string;
@@ -44,7 +74,20 @@ export const SELLER_CREDENTIAL_PLATFORMS = [
 export type SellerCredentialPlatform =
   (typeof SELLER_CREDENTIAL_PLATFORMS)[number];
 
+export const DEFAULT_SELLER_VERIFY_TIMESTAMP_BUFFER_MS = "172800000";
+
 const HIDDEN_METADATA_KEYS = new Set(["hidden", "originalIndex", "params"]);
+const CURATOR_SELLER_VERIFY_METADATA_KEYS = new Set([
+  "nextId",
+  "after",
+  "before",
+]);
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const isBytes32Hex = (value: unknown): value is `0x${string}` =>
+  typeof value === "string" && /^0x[0-9a-fA-F]{64}$/u.test(value);
 
 export const isRecord = (value: unknown): value is GenericRecord =>
   typeof value === "object" && value !== null;
@@ -63,6 +106,45 @@ export const isBuyerTeePaymentProofInput = (
   value.proofType === "buyerTee" &&
   typeof value.encryptedSessionMaterial === "string" &&
   isBuyerTeePaymentParams(value.params);
+
+export const isSarCredentialBundle = (
+  value: unknown
+): value is SarCredentialBundle => {
+  if (!isRecord(value)) return false;
+
+  return (
+    isNonEmptyString(value.bundleSignature) &&
+    (value.credentialExpiresAt === null ||
+      typeof value.credentialExpiresAt === "string") &&
+    isNonEmptyString(value.credentialType) &&
+    isNonEmptyString(value.credentialValidatedAt) &&
+    isNonEmptyString(value.encryptedBlob) &&
+    isNonEmptyString(value.encryptedDataKey) &&
+    isNonEmptyString(value.nonce) &&
+    isBytes32Hex(value.payeeIdHash) &&
+    isNonEmptyString(value.platform)
+  );
+};
+
+export const isSarCredentialCapture = (
+  value: unknown
+): value is SarCredentialCapture => {
+  if (!isRecord(value)) return false;
+  return (
+    isSarCredentialBundle(value.credentialBundle) &&
+    isNonEmptyString(value.offchainId)
+  );
+};
+
+export const extractSarCredentialCapture = (
+  value: unknown
+): SarCredentialCapture | null => {
+  if (isSarCredentialCapture(value)) return value;
+  if (isRecord(value) && isSarCredentialCapture(value.sarCredentialCapture)) {
+    return value.sarCredentialCapture;
+  }
+  return null;
+};
 
 export const buildBuyerTeeInputParams = (
   metadata: ExtensionRequestMetadata
@@ -104,6 +186,124 @@ export const parseBuyerTeeVerifyMetadataJson = (
   }
 
   return parsed;
+};
+
+export const parseCuratorSellerVerifyMetadataJson = (
+  value: string
+): CuratorSellerVerifyMetadata | undefined => {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const parsed = JSON.parse(trimmed);
+  if (!isRecord(parsed) || Array.isArray(parsed)) {
+    throw new Error("Curator seller metadata must be a JSON object.");
+  }
+
+  const unknownKeys = Object.keys(parsed).filter(
+    (key) => !CURATOR_SELLER_VERIFY_METADATA_KEYS.has(key)
+  );
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `Curator seller metadata has unsupported keys: ${unknownKeys.join(", ")}.`
+    );
+  }
+
+  const metadata: CuratorSellerVerifyMetadata = {};
+  if (parsed.nextId !== undefined) {
+    if (!isNonEmptyString(parsed.nextId)) {
+      throw new Error("metadata.nextId must be a non-empty string.");
+    }
+    metadata.nextId = parsed.nextId;
+  }
+
+  const hasAfter = parsed.after !== undefined;
+  const hasBefore = parsed.before !== undefined;
+  if (hasAfter !== hasBefore) {
+    throw new Error(
+      "metadata.after and metadata.before must be provided together."
+    );
+  }
+
+  if (hasAfter && hasBefore) {
+    if (
+      typeof parsed.after !== "number" ||
+      !Number.isInteger(parsed.after) ||
+      parsed.after < 0
+    ) {
+      throw new Error("metadata.after must be a non-negative integer.");
+    }
+    if (
+      typeof parsed.before !== "number" ||
+      !Number.isInteger(parsed.before) ||
+      parsed.before < 0
+    ) {
+      throw new Error("metadata.before must be a non-negative integer.");
+    }
+    if (parsed.after >= parsed.before) {
+      throw new Error("metadata.after must be less than metadata.before.");
+    }
+    metadata.after = parsed.after;
+    metadata.before = parsed.before;
+  }
+
+  return metadata;
+};
+
+export const buildCuratorSellerVerifyRequestPayload = ({
+  txId,
+  metadata,
+  memo,
+  expectedAmountMinorUnits,
+  resolutionMode,
+  payerHandle,
+  chainId,
+  intent,
+}: {
+  txId: string;
+  metadata?: CuratorSellerVerifyMetadata;
+  memo: string;
+  expectedAmountMinorUnits: string;
+  resolutionMode: string;
+  payerHandle: string;
+  chainId: number;
+  intent: AttestationIntentDetails;
+}): CuratorSellerVerifyRequestPayload => {
+  const payload: CuratorSellerVerifyRequestPayload = {
+    chainId,
+    intent: {
+      ...intent,
+      timestampBufferMs:
+        intent.timestampBufferMs ?? DEFAULT_SELLER_VERIFY_TIMESTAMP_BUFFER_MS,
+    },
+  };
+
+  const trimmedTxId = txId.trim();
+  if (trimmedTxId) payload.txId = trimmedTxId;
+  if (metadata && Object.keys(metadata).length > 0) payload.metadata = metadata;
+
+  const trimmedMemo = memo.trim();
+  if (trimmedMemo) payload.memo = trimmedMemo;
+
+  const trimmedExpectedAmount = expectedAmountMinorUnits.trim();
+  if (trimmedExpectedAmount) {
+    if (!/^[1-9]\d*$/.test(trimmedExpectedAmount)) {
+      throw new Error(
+        "Expected amount minor units must be a positive integer."
+      );
+    }
+    payload.expectedAmountMinorUnits = trimmedExpectedAmount;
+  }
+
+  if (resolutionMode === "memo" || resolutionMode === "name") {
+    payload.resolutionMode = resolutionMode;
+  } else if (resolutionMode.trim()) {
+    throw new Error("Resolution mode must be memo or name.");
+  }
+
+  const trimmedPayerHandle = payerHandle.trim();
+  if (trimmedPayerHandle) payload.payerHandle = trimmedPayerHandle;
+
+  return payload;
 };
 
 export const formatAttestationErrorMessage = (
