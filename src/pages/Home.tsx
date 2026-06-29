@@ -55,13 +55,13 @@ import {
 const CHROME_EXTENSION_URL =
   "https://chromewebstore.google.com/detail/zkp2p-extension/ijpgccednehjpeclfcllnjjcmiohdjih";
 const BUYER_TEE_CAPTURE_MODE = "buyerTee" as const;
-const SELLER_CREDENTIAL_CAPTURE_MODE = "sellerCredential" as const;
-const SELLER_CREDENTIAL_CAPTURE_TIMEOUT_MS = 90000;
+const SELLER_AUTOPILOT_CAPTURE_MODE = "sellerCredential" as const;
+const SELLER_AUTOPILOT_CAPTURE_TIMEOUT_MS = 90000;
 const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
 const IDENTITY_ACTION_PREFIX = "register_";
 
 type ProofStatus = "idle" | "generating" | "success" | "error";
-type FlowMode = "buyer" | "sellerCredential" | "sellerVerify";
+type FlowMode = "buyer" | "sellerAutopilot" | "sellerVerify";
 
 // Default calldata inputs stored at module scope (strict, visible defaults)
 const DEFAULT_CALLDATA_INPUTS = {
@@ -188,9 +188,9 @@ const Home: React.FC = () => {
   const [providerConfigJson, setProviderConfigJson] = useState<string>(() => {
     return localStorage.getItem("providerConfigJson") || "";
   });
-  const [sellerCredentialResult, setSellerCredentialResult] =
+  const [sellerAutopilotResult, setSellerAutopilotResult] =
     useState<SarCredentialCapture | null>(null);
-  const sellerCredentialTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const sellerAutopilotTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [calldataInputs, setCalldataInputs] = useState(DEFAULT_CALLDATA_INPUTS);
   const [generatedCalldata, setGeneratedCalldata] = useState<string>("");
@@ -221,10 +221,10 @@ const Home: React.FC = () => {
   const defaultPaymentMethodHex = keccak256(paymentPlatform);
   const metadataLookupPlatform = paymentPlatform.trim();
   const isBuyerFlow = flowMode === "buyer";
-  const isSellerCredentialFlow = flowMode === "sellerCredential";
+  const isSellerAutopilotFlow = flowMode === "sellerAutopilot";
   const isSellerVerifyFlow = flowMode === "sellerVerify";
-  const isSellerFlow = isSellerCredentialFlow || isSellerVerifyFlow;
-  const requiresExtensionCapture = isBuyerFlow || isSellerCredentialFlow;
+  const isSellerFlow = isSellerAutopilotFlow || isSellerVerifyFlow;
+  const requiresExtensionCapture = isBuyerFlow || isSellerAutopilotFlow;
   const isIdentityFlow = isBuyerFlow && isIdentityActionType(actionType);
   const isBuyerPaymentFlow = isBuyerFlow && !isIdentityFlow;
   const isPaymentAttestationFlow = isBuyerPaymentFlow || isSellerVerifyFlow;
@@ -302,14 +302,14 @@ const Home: React.FC = () => {
   }, [chainId]);
 
   useEffect(() => {
-    const handleSellerCredentialMessage = (event: MessageEvent) => {
+    const handleSellerAutopilotMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (
         event.data?.type !== ExtensionReceiveMessage.METADATA_MESSAGES_RESPONSE
       ) {
         return;
       }
-      if (flowMode !== "sellerCredential") return;
+      if (flowMode !== "sellerAutopilot") return;
 
       const rawCapture = event.data.sarCredentialCapture;
       const capture = isSarCredentialCapture(rawCapture)
@@ -317,7 +317,7 @@ const Home: React.FC = () => {
         : undefined;
       const captureErrorMessage =
         rawCapture && !capture
-          ? "Seller Credential capture did not return a credential bundle."
+          ? "Seller Autopilot capture did not return a credential bundle."
           : null;
       const errorMessage =
         typeof event.data.errorMessage === "string"
@@ -330,12 +330,12 @@ const Home: React.FC = () => {
       )?.toLowerCase();
       if (responsePlatform !== paymentPlatform.trim().toLowerCase()) return;
 
-      if (sellerCredentialTimeoutRef.current) {
-        clearTimeout(sellerCredentialTimeoutRef.current);
-        sellerCredentialTimeoutRef.current = null;
+      if (sellerAutopilotTimeoutRef.current) {
+        clearTimeout(sellerAutopilotTimeoutRef.current);
+        sellerAutopilotTimeoutRef.current = null;
       }
 
-      setSellerCredentialResult(capture ?? null);
+      setSellerAutopilotResult(capture ?? null);
       setResultProof(
         JSON.stringify(
           {
@@ -350,12 +350,12 @@ const Home: React.FC = () => {
       setAttestationError(errorMessage);
     };
 
-    window.addEventListener("message", handleSellerCredentialMessage);
+    window.addEventListener("message", handleSellerAutopilotMessage);
     return () => {
-      window.removeEventListener("message", handleSellerCredentialMessage);
-      if (sellerCredentialTimeoutRef.current) {
-        clearTimeout(sellerCredentialTimeoutRef.current);
-        sellerCredentialTimeoutRef.current = null;
+      window.removeEventListener("message", handleSellerAutopilotMessage);
+      if (sellerAutopilotTimeoutRef.current) {
+        clearTimeout(sellerAutopilotTimeoutRef.current);
+        sellerAutopilotTimeoutRef.current = null;
       }
     };
   }, [flowMode, paymentPlatform]);
@@ -380,7 +380,7 @@ const Home: React.FC = () => {
     setResultProof("");
     setAttestationResponse(null);
     setAttestationError(null);
-    setSellerCredentialResult(null);
+    setSellerAutopilotResult(null);
     setBuyerTeeVerifyMetadataJson("");
     setGeneratedCalldata("");
     setCalldataError(null);
@@ -544,7 +544,7 @@ const Home: React.FC = () => {
 
     if (
       !paymentPlatform.trim() ||
-      (!isSellerCredentialFlow && (!intentHash || !actionType))
+      (!isSellerAutopilotFlow && (!intentHash || !actionType))
     ) {
       alert("Please fill out all fields");
       return;
@@ -561,40 +561,40 @@ const Home: React.FC = () => {
       );
       return;
     }
-    const captureMode = isSellerCredentialFlow
-      ? SELLER_CREDENTIAL_CAPTURE_MODE
+    const captureMode = isSellerAutopilotFlow
+      ? SELLER_AUTOPILOT_CAPTURE_MODE
       : BUYER_TEE_CAPTURE_MODE;
 
-    if (sellerCredentialTimeoutRef.current) {
-      clearTimeout(sellerCredentialTimeoutRef.current);
-      sellerCredentialTimeoutRef.current = null;
+    if (sellerAutopilotTimeoutRef.current) {
+      clearTimeout(sellerAutopilotTimeoutRef.current);
+      sellerAutopilotTimeoutRef.current = null;
     }
 
     setSelectedMetadata(null);
-    setProofStatus(isSellerCredentialFlow ? "generating" : "idle");
+    setProofStatus(isSellerAutopilotFlow ? "generating" : "idle");
     setResultProof("");
     setProofGenerationDuration(null);
     setAttestationResponse(null);
     setAttestationError(null);
-    setSellerCredentialResult(null);
+    setSellerAutopilotResult(null);
     setBuyerTeeVerifyMetadataJson("");
     setGeneratedCalldata("");
     setCalldataError(null);
     setIsPasteMode(false);
 
-    if (isSellerCredentialFlow) {
-      sellerCredentialTimeoutRef.current = setTimeout(() => {
+    if (isSellerAutopilotFlow) {
+      sellerAutopilotTimeoutRef.current = setTimeout(() => {
         setProofStatus("error");
-        setAttestationError("Seller Credential capture timed out.");
-        sellerCredentialTimeoutRef.current = null;
-      }, SELLER_CREDENTIAL_CAPTURE_TIMEOUT_MS);
+        setAttestationError("Seller Autopilot capture timed out.");
+        sellerAutopilotTimeoutRef.current = null;
+      }, SELLER_AUTOPILOT_CAPTURE_TIMEOUT_MS);
     }
 
     openNewTab(
       route.captureActionType,
       route.capturePlatform,
       captureMode,
-      isSellerCredentialFlow ? undefined : attestationBaseUrl.trim() || null,
+      isSellerAutopilotFlow ? undefined : attestationBaseUrl.trim() || null,
       providerConfig
     );
   };
@@ -990,8 +990,8 @@ const Home: React.FC = () => {
                         onChange={handleFlowModeChange}
                       >
                         <option value="buyer">Buyer</option>
-                        <option value="sellerCredential">
-                          Seller Credential
+                        <option value="sellerAutopilot">
+                          Seller Autopilot
                         </option>
                         <option value="sellerVerify">Seller Verify</option>
                       </StyledSelect>
@@ -1047,8 +1047,8 @@ const Home: React.FC = () => {
                 <StepLabel>
                   {isBuyerFlow
                     ? "Fetch Metadata"
-                    : isSellerCredentialFlow
-                    ? "Seller Credential"
+                    : isSellerAutopilotFlow
+                    ? "Seller Autopilot"
                     : "Seller Verify"}
                 </StepLabel>
               </StepIndicator>
@@ -1056,7 +1056,7 @@ const Home: React.FC = () => {
                 <StatusLabel>
                   {isBuyerFlow
                     ? "Available Metadata"
-                    : isSellerCredentialFlow
+                    : isSellerAutopilotFlow
                     ? "Seller Capture"
                     : "Curator Verify"}
                 </StatusLabel>
@@ -1131,47 +1131,47 @@ const Home: React.FC = () => {
                     </EmptyStateContainer>
                   )}
                 </>
-              ) : isSellerCredentialFlow && sellerCredentialResult ? (
+              ) : isSellerAutopilotFlow && sellerAutopilotResult ? (
                 <MetadataList>
                   <MetadataItem selected={false}>
                     <MetadataInfo>
                       <ThemedText.BodySmall>
                         Platform:{" "}
-                        {sellerCredentialResult.credentialBundle.platform ??
+                        {sellerAutopilotResult.credentialBundle.platform ??
                           paymentPlatform}
                       </ThemedText.BodySmall>
                       <ThemedText.BodySmall>
-                        Offchain ID: {sellerCredentialResult.offchainId}
+                        Offchain ID: {sellerAutopilotResult.offchainId}
                       </ThemedText.BodySmall>
-                      {sellerCredentialResult.credentialBundle.platform && (
+                      {sellerAutopilotResult.credentialBundle.platform && (
                         <ThemedText.BodySmall>
                           Bundle Platform:{" "}
-                          {sellerCredentialResult.credentialBundle.platform}
+                          {sellerAutopilotResult.credentialBundle.platform}
                         </ThemedText.BodySmall>
                       )}
-                      {sellerCredentialResult.credentialBundle
+                      {sellerAutopilotResult.credentialBundle
                         .credentialType && (
                         <ThemedText.BodySmall>
                           Credential Type:{" "}
                           {
-                            sellerCredentialResult.credentialBundle
+                            sellerAutopilotResult.credentialBundle
                               .credentialType
                           }
                         </ThemedText.BodySmall>
                       )}
-                      {sellerCredentialResult.credentialBundle.payeeIdHash && (
+                      {sellerAutopilotResult.credentialBundle.payeeIdHash && (
                         <ThemedText.BodySmall>
                           Payee Hash:{" "}
-                          {sellerCredentialResult.credentialBundle.payeeIdHash}
+                          {sellerAutopilotResult.credentialBundle.payeeIdHash}
                         </ThemedText.BodySmall>
                       )}
                     </MetadataInfo>
                   </MetadataItem>
                 </MetadataList>
-              ) : isSellerCredentialFlow ? (
+              ) : isSellerAutopilotFlow ? (
                 <EmptyStateContainer>
                   <EmptyStateMessage>
-                    Authenticate to capture seller credential output
+                    Authenticate to capture seller autopilot output
                   </EmptyStateMessage>
                 </EmptyStateContainer>
               ) : (
@@ -1189,8 +1189,8 @@ const Home: React.FC = () => {
               <StepIndicator>
                 <StepNumber>3</StepNumber>
                 <StepLabel>
-                  {isSellerCredentialFlow
-                    ? "Seller Credential Output"
+                  {isSellerAutopilotFlow
+                    ? "Seller Autopilot Output"
                     : isSellerVerifyFlow
                     ? "Seller Verify"
                     : isIdentityFlow
@@ -1202,7 +1202,7 @@ const Home: React.FC = () => {
                 <StatusLabel>
                   {isBuyerFlow
                     ? "TEE Status"
-                    : isSellerCredentialFlow
+                    : isSellerAutopilotFlow
                     ? "Capture Status"
                     : "Verify Status"}
                 </StatusLabel>
@@ -1239,8 +1239,8 @@ const Home: React.FC = () => {
                     <SpinnerContainer>
                       <Spinner color={colors.defaultBorderColor} size={40} />
                       <SpinnerMessage>
-                        {isSellerCredentialFlow ? (
-                          "Waiting for seller credential response..."
+                        {isSellerAutopilotFlow ? (
+                          "Waiting for seller autopilot response..."
                         ) : (
                           <>
                             Preparing buyer TEE request...
@@ -1255,8 +1255,8 @@ const Home: React.FC = () => {
                   {(proofStatus === "success" || proofStatus === "error") && (
                     <>
                       <ThemedText.BodySecondary>
-                        {isSellerCredentialFlow && proofStatus === "success" ? (
-                          "Seller Credential response ready!"
+                        {isSellerAutopilotFlow && proofStatus === "success" ? (
+                          "Seller Autopilot response ready!"
                         ) : isIdentityFlow && proofStatus === "success" ? (
                           `Identity TEE request ready! ${
                             proofGenerationDuration
@@ -1275,13 +1275,13 @@ const Home: React.FC = () => {
                           }`
                         ) : (
                           <>
-                            {isSellerCredentialFlow
-                              ? "Seller Credential error: "
+                            {isSellerAutopilotFlow
+                              ? "Seller Autopilot error: "
                               : "Error preparing proof: "}
                             <ErrorMessage>
                               {attestationError ||
-                                (isSellerCredentialFlow
-                                  ? "Seller Credential capture failed."
+                                (isSellerAutopilotFlow
+                                  ? "Seller Autopilot capture failed."
                                   : "Buyer TEE preparation failed.")}
                             </ErrorMessage>
                           </>
@@ -1291,8 +1291,8 @@ const Home: React.FC = () => {
                         readOnly
                         value={resultProof}
                         aria-label={
-                          isSellerCredentialFlow
-                            ? "Seller credential response JSON"
+                          isSellerAutopilotFlow
+                            ? "Seller autopilot response JSON"
                             : "Generated proof JSON"
                         }
                       />
@@ -1302,8 +1302,8 @@ const Home: React.FC = () => {
               ) : (
                 <EmptyStateContainer>
                   <EmptyStateMessage>
-                    {isSellerCredentialFlow
-                      ? "Authenticate to capture seller credential output"
+                    {isSellerAutopilotFlow
+                      ? "Authenticate to capture seller autopilot output"
                       : isSellerVerifyFlow
                       ? "Seller verify response will appear in Step 4"
                       : isIdentityFlow
