@@ -1,9 +1,22 @@
 import type {
   BuyerTeePaymentParams,
   ExtensionRequestMetadata,
+  SarCredentialBundle,
+  SarCredentialCapture,
 } from "@helpers/types";
 
 export type GenericRecord = Record<string, unknown>;
+
+export type AttestationIntentDetails = {
+  amount: string;
+  conversionRate: string;
+  fiatCurrency: string;
+  intentHash: string;
+  payeeDetails: string;
+  paymentMethod: string;
+  timestampMs: string;
+  timestampBufferMs?: string;
+};
 
 export type ProofRoute = {
   captureActionType: string;
@@ -46,6 +59,12 @@ export type SellerCredentialPlatform =
 
 const HIDDEN_METADATA_KEYS = new Set(["hidden", "originalIndex", "params"]);
 
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const isBytes32Hex = (value: unknown): value is `0x${string}` =>
+  typeof value === "string" && /^0x[0-9a-fA-F]{64}$/u.test(value);
+
 export const isRecord = (value: unknown): value is GenericRecord =>
   typeof value === "object" && value !== null;
 
@@ -63,6 +82,45 @@ export const isBuyerTeePaymentProofInput = (
   value.proofType === "buyerTee" &&
   typeof value.encryptedSessionMaterial === "string" &&
   isBuyerTeePaymentParams(value.params);
+
+export const isSarCredentialBundle = (
+  value: unknown
+): value is SarCredentialBundle => {
+  if (!isRecord(value)) return false;
+
+  return (
+    isNonEmptyString(value.bundleSignature) &&
+    (value.credentialExpiresAt === null ||
+      typeof value.credentialExpiresAt === "string") &&
+    isNonEmptyString(value.credentialType) &&
+    isNonEmptyString(value.credentialValidatedAt) &&
+    isNonEmptyString(value.encryptedBlob) &&
+    isNonEmptyString(value.encryptedDataKey) &&
+    isNonEmptyString(value.nonce) &&
+    isBytes32Hex(value.payeeIdHash) &&
+    isNonEmptyString(value.platform)
+  );
+};
+
+export const isSarCredentialCapture = (
+  value: unknown
+): value is SarCredentialCapture => {
+  if (!isRecord(value)) return false;
+  return (
+    isSarCredentialBundle(value.credentialBundle) &&
+    isNonEmptyString(value.offchainId)
+  );
+};
+
+export const extractSarCredentialCapture = (
+  value: unknown
+): SarCredentialCapture | null => {
+  if (isSarCredentialCapture(value)) return value;
+  if (isRecord(value) && isSarCredentialCapture(value.sarCredentialCapture)) {
+    return value.sarCredentialCapture;
+  }
+  return null;
+};
 
 export const buildBuyerTeeInputParams = (
   metadata: ExtensionRequestMetadata
