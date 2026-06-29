@@ -26,6 +26,7 @@ import type {
   ProofRoute,
 } from "@helpers/attestation";
 import {
+  buildCuratorSellerVerifyRequestPayload,
   buildBuyerTeeInputParams,
   deriveIntentAmountFromMetadata,
   deriveIntentTimestampSecFromMetadata,
@@ -36,6 +37,7 @@ import {
   isRecord,
   isSarCredentialCapture,
   parseBuyerTeeVerifyMetadataJson,
+  parseCuratorSellerVerifyMetadataJson,
 } from "@helpers/attestation";
 import chromeSvg from "../assets/images/browsers/chrome.svg";
 import braveSvg from "../assets/images/browsers/brave.svg";
@@ -166,6 +168,21 @@ const Home: React.FC = () => {
     const stored = localStorage.getItem("attestationBaseUrl");
     return stored || "https://attestation-service.zkp2p.xyz";
   });
+  const [curatorBaseUrl, setCuratorBaseUrl] = useState<string>(() => {
+    const stored = localStorage.getItem("curatorBaseUrl");
+    return stored || "https://api.zkp2p.xyz";
+  });
+  const [curatorApiKey, setCuratorApiKey] = useState("");
+  const [sellerVerifyTxId, setSellerVerifyTxId] = useState("");
+  const [sellerVerifyMetadataJson, setSellerVerifyMetadataJson] = useState("");
+  const [sellerVerifyMemo, setSellerVerifyMemo] = useState("");
+  const [
+    sellerVerifyExpectedAmountMinorUnits,
+    setSellerVerifyExpectedAmountMinorUnits,
+  ] = useState("");
+  const [sellerVerifyResolutionMode, setSellerVerifyResolutionMode] =
+    useState("");
+  const [sellerVerifyPayerHandle, setSellerVerifyPayerHandle] = useState("");
   const [providerConfigJson, setProviderConfigJson] = useState<string>(() => {
     return localStorage.getItem("providerConfigJson") || "";
   });
@@ -179,6 +196,8 @@ const Home: React.FC = () => {
   // Step 4 independent intent hash for verification
   const [verifyIntentHash, setVerifyIntentHash] = useState<string>("");
   const [isIntentAdvancedOpen, setIsIntentAdvancedOpen] = useState(false);
+  const [isSellerVerifyAdvancedOpen, setIsSellerVerifyAdvancedOpen] =
+    useState(false);
   const [fetchIntentLoading, setFetchIntentLoading] = useState(false);
   const [fetchIntentError, setFetchIntentError] = useState<string | null>(null);
   const [paymentMethodHex, setPaymentMethodHex] = useState<string>("");
@@ -231,6 +250,10 @@ const Home: React.FC = () => {
   useEffect(() => {
     localStorage.setItem("attestationBaseUrl", attestationBaseUrl);
   }, [attestationBaseUrl]);
+
+  useEffect(() => {
+    localStorage.setItem("curatorBaseUrl", curatorBaseUrl);
+  }, [curatorBaseUrl]);
 
   useEffect(() => {
     localStorage.setItem("providerConfigJson", providerConfigJson);
@@ -436,7 +459,7 @@ const Home: React.FC = () => {
     }
     const responseRecord = isRecord(responseData) ? responseData : {};
 
-    if (!response.ok) {
+    if (!response.ok || responseRecord.success === false) {
       throw new Error(
         formatAttestationErrorMessage(
           responseRecord,
@@ -447,6 +470,60 @@ const Home: React.FC = () => {
     }
 
     return responseData;
+  };
+
+  const handleSendToCuratorSellerVerify = async () => {
+    if (!isSellerAutopilotFlow) return;
+
+    setAttestationLoading(true);
+    setAttestationError(null);
+    setAttestationResponse(null);
+    setGeneratedCalldata("");
+    setCalldataError(null);
+
+    try {
+      const baseUrl = curatorBaseUrl.trim().replace(/\/+$/, "");
+      if (!baseUrl) {
+        throw new Error("Enter a Curator API URL.");
+      }
+
+      const apiKey = curatorApiKey.trim();
+      if (!apiKey) {
+        throw new Error("Enter a Curator internal API key.");
+      }
+
+      const route = resolveProofRoute();
+      const metadata = parseCuratorSellerVerifyMetadataJson(
+        sellerVerifyMetadataJson
+      );
+      const payload = buildCuratorSellerVerifyRequestPayload({
+        txId: sellerVerifyTxId,
+        metadata,
+        memo: sellerVerifyMemo,
+        expectedAmountMinorUnits: sellerVerifyExpectedAmountMinorUnits,
+        resolutionMode: sellerVerifyResolutionMode,
+        payerHandle: sellerVerifyPayerHandle,
+        chainId,
+        intent: buildPaymentIntentDetails(),
+      });
+      const endpoint = `${baseUrl}/v2/verify/seller/${encodeURIComponent(
+        route.verifierPlatform
+      )}`;
+
+      console.log("Curator seller verify payload:", payload);
+
+      const responseData = await postAttestationJson(endpoint, payload, {
+        "x-api-key": apiKey,
+      });
+      setAttestationResponse(JSON.stringify(responseData, null, 2));
+    } catch (error) {
+      console.error("Error sending seller verify to curator:", error);
+      setAttestationError(
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    } finally {
+      setAttestationLoading(false);
+    }
   };
 
   const handleAuthenticate = () => {
@@ -1303,23 +1380,160 @@ const Home: React.FC = () => {
                         </StyledInputContainer>
                       )}
                       {isSellerAutopilotFlow && (
-                        <StyledInputContainer>
-                          <StyledInputLabel htmlFor="sellerAttestationResponse">
-                            Seller Attestation JSON
-                          </StyledInputLabel>
-                          <MetadataJsonTextArea
-                            id="sellerAttestationResponse"
-                            name="sellerAttestationResponse"
-                            value={attestationResponse ?? ""}
-                            onChange={(e) => {
-                              setAttestationResponse(e.target.value);
-                              setGeneratedCalldata("");
-                              setCalldataError(null);
-                            }}
-                            placeholder='{ "signature": "0x...", "signer": "0x...", "encodedPaymentDetails": "0x...", "typedDataValue": { "intentHash": "0x...", "releaseAmount": "0", "dataHash": "0x..." } }'
-                            spellCheck="false"
+                        <>
+                          <Input
+                            label="Curator API URL"
+                            name="curatorBaseUrl"
+                            value={curatorBaseUrl}
+                            onChange={(e) => setCuratorBaseUrl(e.target.value)}
+                            valueFontSize="14px"
+                            placeholder="https://api.zkp2p.xyz"
+                            type="url"
+                            inputMode="url"
+                            readOnly={attestationLoading}
                           />
-                        </StyledInputContainer>
+                          <Input
+                            label="Curator Internal API Key"
+                            name="curatorApiKey"
+                            value={curatorApiKey}
+                            onChange={(e) => setCuratorApiKey(e.target.value)}
+                            valueFontSize="14px"
+                            type="password"
+                            readOnly={attestationLoading}
+                          />
+                          <Input
+                            label="Seller Tx ID"
+                            name="sellerVerifyTxId"
+                            value={sellerVerifyTxId}
+                            onChange={(e) =>
+                              setSellerVerifyTxId(e.target.value)
+                            }
+                            valueFontSize="14px"
+                            placeholder="Payment or transaction id"
+                            readOnly={attestationLoading}
+                          />
+                          <AdvancedSection>
+                            <AdvancedHeader
+                              type="button"
+                              onClick={() =>
+                                setIsSellerVerifyAdvancedOpen(
+                                  !isSellerVerifyAdvancedOpen
+                                )
+                              }
+                              aria-expanded={isSellerVerifyAdvancedOpen}
+                              aria-controls="seller-verify-advanced-panel"
+                            >
+                              <ThemedText.BodySmall>
+                                Seller Verify Options
+                              </ThemedText.BodySmall>
+                              <AdvancedChevron
+                                size={16}
+                                $expanded={isSellerVerifyAdvancedOpen}
+                              />
+                            </AdvancedHeader>
+                            {isSellerVerifyAdvancedOpen && (
+                              <AdvancedContent id="seller-verify-advanced-panel">
+                                <CalldataInputsContainer>
+                                  <CalldataInputsGrid>
+                                    <Input
+                                      label="Memo"
+                                      name="sellerVerifyMemo"
+                                      value={sellerVerifyMemo}
+                                      onChange={(e) =>
+                                        setSellerVerifyMemo(e.target.value)
+                                      }
+                                      valueFontSize="14px"
+                                      readOnly={attestationLoading}
+                                    />
+                                    <Input
+                                      label="Expected Minor Units"
+                                      name="sellerVerifyExpectedAmountMinorUnits"
+                                      value={
+                                        sellerVerifyExpectedAmountMinorUnits
+                                      }
+                                      onChange={(e) =>
+                                        setSellerVerifyExpectedAmountMinorUnits(
+                                          e.target.value
+                                        )
+                                      }
+                                      valueFontSize="14px"
+                                      inputMode="numeric"
+                                      readOnly={attestationLoading}
+                                    />
+                                    <StyledInputContainer>
+                                      <StyledInputLabel htmlFor="sellerVerifyResolutionMode">
+                                        Resolution Mode
+                                      </StyledInputLabel>
+                                      <StyledSelect
+                                        id="sellerVerifyResolutionMode"
+                                        name="sellerVerifyResolutionMode"
+                                        value={sellerVerifyResolutionMode}
+                                        onChange={(e) =>
+                                          setSellerVerifyResolutionMode(
+                                            e.target.value
+                                          )
+                                        }
+                                        disabled={attestationLoading}
+                                      >
+                                        <option value="">Default</option>
+                                        <option value="memo">Memo</option>
+                                        <option value="name">Name</option>
+                                      </StyledSelect>
+                                    </StyledInputContainer>
+                                    <Input
+                                      label="Payer Handle"
+                                      name="sellerVerifyPayerHandle"
+                                      value={sellerVerifyPayerHandle}
+                                      onChange={(e) =>
+                                        setSellerVerifyPayerHandle(
+                                          e.target.value
+                                        )
+                                      }
+                                      valueFontSize="14px"
+                                      readOnly={attestationLoading}
+                                    />
+                                  </CalldataInputsGrid>
+                                </CalldataInputsContainer>
+                                <StyledInputContainer>
+                                  <StyledInputLabel htmlFor="sellerVerifyMetadata">
+                                    Metadata JSON
+                                  </StyledInputLabel>
+                                  <MetadataJsonTextArea
+                                    id="sellerVerifyMetadata"
+                                    name="sellerVerifyMetadata"
+                                    value={sellerVerifyMetadataJson}
+                                    onChange={(e) =>
+                                      setSellerVerifyMetadataJson(
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder='{ "nextId": "cursor", "after": 1713000000, "before": 1713003600 }'
+                                    spellCheck="false"
+                                    readOnly={attestationLoading}
+                                  />
+                                </StyledInputContainer>
+                              </AdvancedContent>
+                            )}
+                          </AdvancedSection>
+                          <StyledInputContainer>
+                            <StyledInputLabel htmlFor="sellerAttestationResponse">
+                              Seller Attestation JSON
+                            </StyledInputLabel>
+                            <MetadataJsonTextArea
+                              id="sellerAttestationResponse"
+                              name="sellerAttestationResponse"
+                              value={attestationResponse ?? ""}
+                              onChange={(e) => {
+                                setAttestationResponse(e.target.value);
+                                setGeneratedCalldata("");
+                                setCalldataError(null);
+                              }}
+                              placeholder='{ "signature": "0x...", "signer": "0x...", "encodedPaymentDetails": "0x...", "typedDataValue": { "intentHash": "0x...", "releaseAmount": "0", "dataHash": "0x..." } }'
+                              spellCheck="false"
+                              readOnly={attestationLoading}
+                            />
+                          </StyledInputContainer>
+                        </>
                       )}
                       {isBuyerFlow && (
                         <StyledInputContainer>
@@ -1487,6 +1701,19 @@ const Home: React.FC = () => {
                               width={216}
                             >
                               {submitButtonLabel}
+                            </Button>
+                          )}
+                          {isSellerAutopilotFlow && (
+                            <Button
+                              onClick={handleSendToCuratorSellerVerify}
+                              disabled={
+                                attestationLoading || !curatorApiKey.trim()
+                              }
+                              loading={attestationLoading}
+                              height={48}
+                              width={216}
+                            >
+                              Seller Verify
                             </Button>
                           )}
                           {isPaymentAttestationFlow && (
